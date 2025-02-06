@@ -2,3 +2,4 @@
 .DS_Store
 /samples
 __pycache__
+data/gencode.v38.annotation.gtf    

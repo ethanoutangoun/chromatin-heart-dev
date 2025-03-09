@@ -1,141 +1,228 @@
 # Helper functions for the main script
-
 import networkx as nx
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import re
+from tqdm import tqdm
 
-# GRAPH FUNCTIONS
-def generate_sample_matrix_bins(n_bins):
-    np.random.seed(42)
+# Clique finding algorithms
+def find_clique_greedy(contact_matrix, n, target_bin=None, bin_map=None):
+    if target_bin is not None:
+        clique = [target_bin]
+        chromosomes = {bin_map.get(target_bin, None)}
+    else:
+        initial_node = np.random.randint(0, contact_matrix.shape[0])
+        clique = [initial_node]
+        chromosomes = {bin_map.get(initial_node, None)}
+
+    excluded_bins = set()
+    edges = []
+
+    while len(clique) < n:
+        max_mean_edge = -1
+        max_node = None
+        best_connection = None
+
+        for node in range(contact_matrix.shape[0]):
+            if node not in clique and node not in excluded_bins:
+                # Calculate mean interaction with all nodes in the clique
+                sum_connections = 0
+                count = 0
+
+                for c in clique:
+                    if bin_map.get(node, None) == bin_map.get(c, None):
+                        sum_connections += 0
+                    else:
+                        sum_connections += contact_matrix[node, c]
+                    count += 1
+
+                mean_connection = sum_connections / count if count > 0 else 0
+
+
+                if mean_connection > max_mean_edge:
+                    max_mean_edge = mean_connection
+                    max_node = node
+                    best_connection = (node, max(clique, key=lambda c: contact_matrix[node, c]), mean_connection)
+
+        if max_node is None:
+            break
+
+        clique.append(max_node)
+        
+        # exclude nodes +-10 bins from the selected node
+        excluded_bins.add(max_node)
+        for i in range(max_node - 10, max_node + 11):
+            excluded_bins.add(i)
+
+        chromosomes.add(bin_map.get(max_node, None))
+        edges.append(best_connection)
+        
+    return clique
+
+
+
+
+def random_walk(contact_matrix, start_node, n, num_molecules=100, alpha=0.1, verbose=False):
+    num_nodes = contact_matrix.shape[0]
+    visit_count = np.zeros(num_nodes, dtype=int)
     
-    dense_regions = [
-        (0, n_bins // 10),    # Community 1
-        (n_bins // 10, n_bins // 5),  # Community 2
-        (n_bins // 5, n_bins // 2)  # Community 3
-    ]
-
-    contact_matrix = np.random.rand(n_bins, n_bins) * 2
-
-    for start, end in dense_regions:
-        for i in range(start, end + 1):
-            for j in range(start, end + 1):
-                if i != j:
-                    contact_matrix[i, j] = np.random.rand() * 8 + 2  
-
-    # Make matrix symmetric
-    contact_matrix = (contact_matrix + contact_matrix.T) / 2
-    np.fill_diagonal(contact_matrix, 0)
-
-    return contact_matrix
-
-def generate_sample_matrix():
-    np.random.seed(42)
-    n_nodes = 15
-    dense_regions = [
-        (0, 4),   # Community 1
-        (5, 9),   # Community 2
-        (10, 14)  # Community 3
-    ]
-
-    contact_matrix = np.random.rand(n_nodes, n_nodes) * 2
-    for start, end in dense_regions:
-        for i in range(start, end + 1):
-            for j in range(start, end + 1):
-                if i != j:
-                    contact_matrix[i, j] = np.random.rand() * 8 + 2 
-
-    # Make matrix symmetric
-    contact_matrix = (contact_matrix + contact_matrix.T) / 2
-    np.fill_diagonal(contact_matrix, 0)
-
-    return contact_matrix
-
-def generate_random_matrix():
-    np.random.seed(42)
-    n_nodes = 10
-    contact_matrix = np.random.rand(n_nodes, n_nodes)
-    contact_matrix = (contact_matrix + contact_matrix.T) / 2
-    np.fill_diagonal(contact_matrix, 0)
-    return contact_matrix
-
-
-def construct_graph_from_contact_matrix(contact_matrix, threshold=0):
-    if isinstance(contact_matrix, np.ndarray):
-        contact_matrix = pd.DataFrame(contact_matrix)
+    iterator = tqdm(range(num_molecules)) if verbose else range(num_molecules)
     
-    if contact_matrix.shape[0] != contact_matrix.shape[1]:
-        raise ValueError("Contact matrix must be square.")
-    
-    graph = nx.Graph()
-    num_bins = contact_matrix.shape[0]
+    for _ in iterator: 
+        current_node = start_node
+        
+        while True:
+            visit_count[current_node] += 1  # Track visits per molecule
+            
+            if np.random.rand() < alpha:
+                break
+            
+            neighbors = np.where(contact_matrix[current_node] > 0)[0]
+            if len(neighbors) == 0:
+                break
+            
+            weights = contact_matrix[current_node, neighbors]
+            probabilities = weights / np.sum(weights)
+            
+            next_node = np.random.choice(neighbors, p=probabilities)
+            current_node = next_node
 
-    # Add nodes to the graph 
-    graph.add_nodes_from(range(num_bins))
+    clique = np.argsort(visit_count)[-n:][::-1]
     
-    for i in range(num_bins):
-        for j in range(i + 1, num_bins): 
-            weight = contact_matrix.iloc[i, j]
-            if weight > threshold:
-                graph.add_edge(i, j, weight=weight)
+    return clique
 
-    # Define positions using spring layout
-    pos = nx.spring_layout(graph, seed=42, k=1.5)
-    plt.figure(figsize=(10, 10))
-    
-    # Draw nodes
-    nx.draw_networkx_nodes(graph, pos, node_size=500, node_color='lightblue', edgecolors='black')
-    
-    # Draw edges with width proportional to weight
-    edges = graph.edges(data=True)
-    nx.draw_networkx_edges(graph, pos, edgelist=edges, width=[d['weight'] * 0.2 for (_, _, d) in edges], alpha=0.7)
-    
-    nx.draw_networkx_labels(graph, pos, font_size=12, font_color='black', font_weight='bold')
-    
-    # Draw edge labels (weights)
-    edge_labels = {(i, j): f"{d['weight']:.1f}" for i, j, d in edges}
-    nx.draw_networkx_edge_labels(graph, pos, edge_labels=edge_labels, font_size=10, font_color='red')
-    
-    plt.title("Graph Representation of Contact Matrix", fontsize=14)
-    plt.savefig("graph_verbose.png")
+
+
+
+# Background Model Generation
+def create_background_model_greedy(contact_matrix, clique_size, bin_map, num_iterations=1000, display=True):
+    interaction_scores = []
+
+    # Use tqdm to display a progress bar
+    for _ in tqdm(range(num_iterations), desc="Processing", unit="iteration"):
+        random_clique = find_clique_greedy(contact_matrix, clique_size, bin_map=bin_map)
+        score = calculate_avg_interaction_strength(contact_matrix, random_clique)
+        interaction_scores.append(score)
+
+    if display:
+        plt.figure(figsize=(10, 6))
+        plt.hist(interaction_scores, bins=50, color='skyblue', edgecolor='black')
+        plt.xlabel('Average Interaction Score')
+        plt.ylabel('Frequency')
+        plt.title(f'Distribution of AIS using Greedy for {num_iterations} Random Cliques of Size {clique_size}')
+        plt.show()
+
+    filename = f'/Users/ethan/Desktop/chromatin-heart-dev/background_models/greedy_scores_{clique_size}_iterations_{num_iterations}.txt'
+    with open(filename, 'w') as f: 
+        for item in interaction_scores:
+            f.write("%s\n" % item)
+
+    return interaction_scores
+
+def create_background_model_rw(contact_matrix, n, num_molecules=100, num_iterations=1000, alpha=0.05):   
+    interaction_scores = []
+
+    for _ in tqdm(range(num_iterations), desc="Processing", unit="iteration"):
+        random_idx = np.random.randint(0, contact_matrix.shape[0])  
+        random_clique = random_walk(contact_matrix, random_idx, n, num_molecules=num_molecules, alpha=alpha)
+        interaction_score = calculate_avg_interaction_strength(contact_matrix, random_clique)
+        interaction_scores.append(interaction_score)
+
+    # Plot the distribution
+    plt.figure(figsize=(10, 6))
+    plt.hist(interaction_scores, bins=50, color='skyblue', edgecolor='black')
+    plt.xlabel('Average Interaction Score')
+    plt.ylabel('Frequency')
+    plt.title(f'Distribution of Average Interaction Scores for {num_molecules} Random Walks of Size {n}')
     plt.show()
+
+    filename = f'/Users/ethan/Desktop/chromatin-heart-dev/background_models/rw_scores_{n}_molecules{num_molecules}.txt'
+    with open(filename, 'w') as f: 
+        for item in interaction_scores:
+            f.write("%s\n" % item)
+
+    return interaction_scores
+
+
+
+# Scoring and testing functions
+def calculate_avg_interaction_strength(contact_matrix, clique):
+    total_interaction_strength = 0
+    num_edges = 0
+
+    # Loop through each unique pair of bins in the clique to get score of each edge
+    for i in range(len(clique)):
+        for j in range(i + 1, len(clique)):
+            bin1 = clique[i]
+            bin2 = clique[j]
+            total_interaction_strength += contact_matrix[bin1, bin2]
+            num_edges += 1
+
+    # Calculate average interaction strength
+    avg_interaction_strength = total_interaction_strength / num_edges if num_edges > 0 else 0
+    return avg_interaction_strength
+
+def simple_p_test(observed_score, random_scores):
+    return np.mean(random_scores >= observed_score)
+
+def permutation_test(contact_matrix, start_node, n, num_molecules=100, alpha=0.1, num_permutations=1000, verbose=False):
+    real_top_nodes = random_walk(contact_matrix, start_node, n, num_molecules, alpha, verbose)
+
+    permuted_top_nodes = []
+
+    # shuffle only contact weights
+    for _ in tqdm(range(num_permutations), desc="Permutation Tests" if verbose else None):
+        permuted_matrix = contact_matrix.copy()
+        for i in range(permuted_matrix.shape[0]):
+            np.random.shuffle(permuted_matrix[i])  
+
+        permuted_top_nodes.append(random_walk(permuted_matrix, start_node, n, num_molecules, alpha, verbose))
     
-    return graph
+    p_values = np.zeros(n)
+    
+    for i, node in enumerate(real_top_nodes):
+        null_distribution = [top_nodes[i] for top_nodes in permuted_top_nodes]
+        p_value = np.mean(np.array(null_distribution) == node)
+        p_values[i] = p_value
+    
+    return real_top_nodes, p_values, permuted_top_nodes
 
-def clique_to_graph(graph_data, spacing=1.0, selected_bin=None, verbose=False):
-    nodes = graph_data['nodes']
-    edges = graph_data['edges']
 
+
+# Function for displaying found clique as a fully connected graph
+def clique_to_graph(contact_matrix, clique, selected_bin = None):
+    edges = []
+
+    for i in range(len(clique)):
+        for j in range(i+1, len(clique)):
+            edges.append((clique[i], clique[j], contact_matrix[clique[i], clique[j]]))
+
+    # create a graph
     G = nx.Graph()
-    G.add_nodes_from(nodes)
-    G.add_weighted_edges_from(edges)  
-    
+    G.add_nodes_from(clique)
+    G.add_weighted_edges_from(edges)
+    node_colors = ['red' if bin == selected_bin else 'skyblue' for bin in clique]
 
-    if not verbose:
-      return G
-
-
-    pos = nx.spring_layout(G, k=spacing, seed=42)  # Adjust spacing
-
-    plt.figure(figsize=(8, 6))  # Increase figure size for better visibility
-
-    # Set node colors: red for selected_bin, skyblue for others
-    node_colors = ['red' if node == selected_bin else 'skyblue' for node in nodes]
-
-    nx.draw(G, pos, with_labels=True, node_size=700, node_color=node_colors, 
+    # visualize the graph
+    pos = nx.spring_layout(G, seed=42)
+    plt.figure(figsize=(8, 6))
+    nx.draw(G, pos, with_labels=True, node_size=700, node_color=node_colors,
             font_size=15, font_weight='bold', edge_color='gray')
 
     labels = nx.get_edge_attributes(G, 'weight')
-    labels = {k: f"{v:.5f}" for k, v in labels.items()}  # Format weights to 5 decimals
-    nx.draw_networkx_edge_labels(G, pos, edge_labels=labels, font_size=12, font_weight='bold')
+    labels = {k: f"{v:.5f}" for k, v in labels.items()}
 
+    nx.draw_networkx_edge_labels(G, pos, edge_labels=labels, font_size=12, font_weight='bold')
     plt.show()
+
     return G
 
 
 
-# HELPER FUNCTIONS
+
+
+# Helpers for post clustering analysis
 def parse_gene_name(attribute):
     match = re.search(r'gene_name "([^"]+)"', attribute)
     return match.group(1) if match else None
@@ -187,9 +274,6 @@ def find_ttn_bin(gtf_file_path, node_bed_path):
     
     return overlapping_bins["bin"].tolist()
 
-
-
-
 def load_bin_map(file_path):
     bin_dict = {}
     with open(file_path, 'r') as file:
@@ -201,203 +285,70 @@ def load_bin_map(file_path):
     return bin_dict
 
 
-import numpy as np
-
-def find_clique_greedy(contact_matrix, n, target_bin=None, bin_map=None):
-    if target_bin is not None:
-        clique = [target_bin]
-        chromosomes = {bin_map.get(target_bin, None)}
-    else:
-        initial_node = np.random.randint(0, contact_matrix.shape[0])
-        clique = [initial_node]
-        chromosomes = {bin_map.get(initial_node, None)}
-
-    edges = []
-
-    while len(clique) < n:
-        max_mean_edge = -1
-        max_node = None
-        best_connection = None
-
-        for node in range(contact_matrix.shape[0]):
-
-            if node not in clique:
-                # Calculate mean interaction with all nodes in the clique
-                sum_connections = 0
-                count = 0
-
-                for c in clique:
-                    if bin_map.get(node, None) == bin_map.get(c, None):
-                        sum_connections += 0
-                    else:
-                        sum_connections += contact_matrix[node, c]
-                    count += 1
-
-                mean_connection = sum_connections / count if count > 0 else 0
 
 
-                if mean_connection > max_mean_edge:
-                    max_mean_edge = mean_connection
-                    max_node = node
-                    best_connection = (node, max(clique, key=lambda c: contact_matrix[node, c]), mean_connection)
+# Helpers for generating and visualizing graphs
+def generate_sample_matrix_bins(n_bins):
+    np.random.seed(42)
+    
+    dense_regions = [
+        (0, n_bins // 10),    # Community 1
+        (n_bins // 10, n_bins // 5),  # Community 2
+        (n_bins // 5, n_bins // 2)  # Community 3
+    ]
 
-        if max_node is None:
-            break
+    contact_matrix = np.random.rand(n_bins, n_bins) * 2
 
-        clique.append(max_node)
-        chromosomes.add(bin_map.get(max_node, None))
-        edges.append(best_connection)
-        
-        
-        total_weight = sum(data[2] for data in edges)
+    for start, end in dense_regions:
+        for i in range(start, end + 1):
+            for j in range(start, end + 1):
+                if i != j:
+                    contact_matrix[i, j] = np.random.rand() * 8 + 2  
 
-        avg_interaction_score = total_weight / len(edges) if len(edges) > 0 else 0
+    # Make matrix symmetric
+    contact_matrix = (contact_matrix + contact_matrix.T) / 2
+    np.fill_diagonal(contact_matrix, 0)
 
-    return {"nodes": clique, "edges": edges, "score": avg_interaction_score}
+    return contact_matrix
 
+def construct_graph_from_contact_matrix(contact_matrix, threshold=0):
+    if isinstance(contact_matrix, np.ndarray):
+        contact_matrix = pd.DataFrame(contact_matrix)
+    
+    if contact_matrix.shape[0] != contact_matrix.shape[1]:
+        raise ValueError("Contact matrix must be square.")
+    
+    graph = nx.Graph()
+    num_bins = contact_matrix.shape[0]
 
+    # Add nodes to the graph 
+    graph.add_nodes_from(range(num_bins))
+    
+    for i in range(num_bins):
+        for j in range(i + 1, num_bins): 
+            weight = contact_matrix.iloc[i, j]
+            if weight > threshold:
+                graph.add_edge(i, j, weight=weight)
 
-
-
-
-
-
-import matplotlib.pyplot as plt
-from tqdm import tqdm
-
-def create_background_model_greedy(contact_matrix, clique_size, bin_map, num_iterations=1000):
-    interaction_scores = []
-
-    # Use tqdm to display a progress bar
-    for _ in tqdm(range(num_iterations), desc="Processing", unit="iteration"):
-        random_clique = find_clique_greedy(contact_matrix, clique_size, bin_map=bin_map)
-        interaction_scores.append(random_clique['score'])
-
-    # Plot the distribution
-    plt.figure(figsize=(10, 6))
-    plt.hist(interaction_scores, bins=50, color='skyblue', edgecolor='black')
-    plt.xlabel('Average Interaction Score')
-    plt.ylabel('Frequency')
-    plt.title(f'Distribution of Average Interaction Scores for {num_iterations} Random Cliques of Size {clique_size}')
+    # Define positions using spring layout
+    pos = nx.spring_layout(graph, seed=42, k=1.5)
+    plt.figure(figsize=(10, 10))
+    
+    # Draw nodes
+    nx.draw_networkx_nodes(graph, pos, node_size=500, node_color='lightblue', edgecolors='black')
+    
+    # Draw edges with width proportional to weight
+    edges = graph.edges(data=True)
+    nx.draw_networkx_edges(graph, pos, edgelist=edges, width=[d['weight'] * 0.2 for (_, _, d) in edges], alpha=0.7)
+    
+    nx.draw_networkx_labels(graph, pos, font_size=12, font_color='black', font_weight='bold')
+    
+    # Draw edge labels (weights)
+    edge_labels = {(i, j): f"{d['weight']:.1f}" for i, j, d in edges}
+    nx.draw_networkx_edge_labels(graph, pos, edge_labels=edge_labels, font_size=10, font_color='red')
+    
+    plt.title("Graph Representation of Contact Matrix", fontsize=14)
     plt.show()
-
-    return interaction_scores
-
-def create_background_model_rw(contact_matrix, n, num_steps=1000, num_molecules=100, num_iterations=1000):
-    interaction_scores = []
-
-    for _ in tqdm(range(num_iterations), desc="Processing", unit="iteration"):
-        random_idx = np.random.randint(0, contact_matrix.shape[0])  
-        print('random_idx:', random_idx)
-        random_clique, interaction_score = random_walk(contact_matrix, random_idx, n, num_steps=num_steps)
-        interaction_scores.append(interaction_score)
-
-    # Plot the distribution
-    plt.figure(figsize=(10, 6))
-    plt.hist(interaction_scores, bins=50, color='skyblue', edgecolor='black')
-    plt.xlabel('Average Interaction Score')
-    plt.ylabel('Frequency')
-    plt.title(f'Distribution of Average Interaction Scores for {num_molecules} Random Walks of Size {n}')
-    plt.show()
-
-    return interaction_scores
-
-
-
-
-import numpy as np
-
-def calculate_avg_interaction_strength(node_indices, contact_matrix):
-    total_interaction_strength = 0
-    num_edges = 0
-
-    # Loop through each unique pair of nodes in the array
-    for i in range(len(node_indices)):
-        for j in range(i + 1, len(node_indices)):
-            node1 = node_indices[i]
-            node2 = node_indices[j]
-            total_interaction_strength += contact_matrix[node1, node2]
-            num_edges += 1
-
-    # Calculate average interaction strength
-    avg_interaction_strength = total_interaction_strength / num_edges if num_edges > 0 else 0
-    return avg_interaction_strength
-
-def random_walk(contact_matrix, start_node, n, num_steps=1000, num_molecules=100):
-    num_nodes = contact_matrix.shape[0]
-    visit_count = np.zeros(num_nodes, dtype=int)
     
-    for _ in tqdm(range(num_molecules)):  # Inject multiple fluid molecules
-        current_node = start_node
-        
-        for _ in range(num_steps):
-            visit_count[current_node] += 1  # Track visits per molecule
-            
-            neighbors = np.where(contact_matrix[current_node] > 0)[0]
-            if len(neighbors) == 0:
-                break
-            
-            weights = contact_matrix[current_node, neighbors]
-            probabilities = weights / np.sum(weights)
-            
-            next_node = np.random.choice(neighbors, p=probabilities)
-            current_node = next_node
-
-    # Get top 5 nodes with highest visit count
-    top_nodes = np.argsort(visit_count)[-n:][::-1]
-
-    interaction_scores = calculate_avg_interaction_strength(top_nodes, contact_matrix)
-    
-    return top_nodes, interaction_scores
-
-
-    
-
-
-
-
-import numpy as np
-from tqdm import tqdm
-
-def stable_random_walk(contact_matrix, start_nodes, num_steps=1000, num_molecules=100, top_n=5, num_runs=10):
-    num_nodes = contact_matrix.shape[0]
-    total_visit_count = np.zeros(num_nodes, dtype=float)
-
-    for _ in tqdm(range(num_runs)):  # Run multiple times for stability
-        visit_count = np.zeros(num_nodes, dtype=int)
-        
-        for _ in range(num_molecules):  
-            current_node = np.random.choice(start_nodes)  # Choose a random starting node
-            
-            for _ in range(num_steps):
-                visit_count[current_node] += 1  
-                
-                neighbors = np.where(contact_matrix[current_node] > 0)[0]
-                if len(neighbors) == 0:
-                    break
-                
-                weights = contact_matrix[current_node, neighbors]
-                probabilities = weights / np.sum(weights)
-                
-                next_node = np.random.choice(neighbors, p=probabilities)
-                current_node = next_node
-
-        total_visit_count += visit_count / num_molecules  # Normalize by molecules per run
-
-    mean_visit_count = total_visit_count / num_runs  # Average across runs
-
-    # Get top 5 nodes with highest average visit count excluding the starting nodes
-
-    filter_count = top_n + len(start_nodes)
-
-    top_nodes = np.argsort(mean_visit_count)[-filter_count:][::-1]  # Get most visited nodes
-    
-    return top_nodes, mean_visit_count
-
-
-
-
-import numpy as np
-from tqdm import tqdm
-from scipy.stats import ttest_ind
+    return graph
 

@@ -137,7 +137,7 @@ def create_background_model_rw(contact_matrix, n, num_molecules=100, num_iterati
     plt.title(f'Distribution of Average Interaction Scores for {num_molecules} Random Walks of Size {n}')
     plt.show()
 
-    filename = f'/Users/ethan/Desktop/chromatin-heart-dev/background_models/rw_scores_{n}_molecules{num_molecules}.txt'
+    filename = f'/Users/ethan/Desktop/chromatin-heart-dev/background_models/rw_scores_{n}_molecules_{num_molecules}_iterations_{num_iterations}.txt'
     with open(filename, 'w') as f: 
         for item in interaction_scores:
             f.write("%s\n" % item)

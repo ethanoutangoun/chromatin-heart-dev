@@ -120,6 +120,57 @@ def create_background_model_greedy(contact_matrix, clique_size, bin_map, num_ite
 
     return interaction_scores
 
+def create_background_model_greedy_strong(contact_matrix, clique_size, bin_map, gene_bins, num_iterations=1000, display=True):
+    interaction_scores = []
+
+    # Use tqdm to display a progress bar
+    for _ in tqdm(range(num_iterations), desc="Processing", unit="iteration"):
+        random_idx = np.random.choice(gene_bins) 
+        random_clique = find_clique_greedy(contact_matrix, clique_size, bin_map=bin_map, target_bin=random_idx)
+        score = calculate_avg_interaction_strength(contact_matrix, random_clique)
+        interaction_scores.append(score)
+
+    if display:
+        plt.figure(figsize=(10, 6))
+        plt.hist(interaction_scores, bins=50, color='skyblue', edgecolor='black')
+        plt.xlabel('Average Interaction Score')
+        plt.ylabel('Frequency')
+        plt.title(f'Distribution of AIS using Greedy for {num_iterations} Random Cliques of Size {clique_size}')
+        plt.show()
+
+    filename = f'/Users/ethan/Desktop/chromatin-heart-dev/background_models/greedy_scores_{clique_size}_iterations_{num_iterations}_strong.txt'
+    with open(filename, 'w') as f: 
+        for item in interaction_scores:
+            f.write("%s\n" % item)
+
+    return interaction_scores
+
+def create_background_model_greedy_weak(contact_matrix, clique_size, bin_map, non_gene_bins, num_iterations=1000, display=True):
+    interaction_scores = []
+
+    # Use tqdm to display a progress bar
+    for _ in tqdm(range(num_iterations), desc="Processing", unit="iteration"):
+        random_idx = np.random.choice(non_gene_bins) 
+        random_clique = find_clique_greedy(contact_matrix, clique_size, bin_map=bin_map, target_bin=random_idx)
+        score = calculate_avg_interaction_strength(contact_matrix, random_clique)
+        interaction_scores.append(score)
+
+    if display:
+        plt.figure(figsize=(10, 6))
+        plt.hist(interaction_scores, bins=50, color='skyblue', edgecolor='black')
+        plt.xlabel('Average Interaction Score')
+        plt.ylabel('Frequency')
+        plt.title(f'Distribution of AIS using Greedy for {num_iterations} Random Cliques of Size {clique_size}')
+        plt.show()
+
+    filename = f'/Users/ethan/Desktop/chromatin-heart-dev/background_models/greedy_scores_{clique_size}_iterations_{num_iterations}_weak.txt'
+    with open(filename, 'w') as f: 
+        for item in interaction_scores:
+            f.write("%s\n" % item)
+
+    return interaction_scores
+
+
 def create_background_model_rw(contact_matrix, n, num_molecules=100, num_iterations=1000, alpha=0.05):   
     interaction_scores = []
 
@@ -143,6 +194,93 @@ def create_background_model_rw(contact_matrix, n, num_molecules=100, num_iterati
             f.write("%s\n" % item)
 
     return interaction_scores
+
+
+def create_background_model_rw_strong(contact_matrix, n, gene_bins, num_molecules=100, num_iterations=1000, alpha=0.05, plot=False):    
+
+    interaction_scores = []
+
+    for _ in tqdm(range(num_iterations), desc="Processing", unit="iteration"):
+        random_idx = np.random.choice(gene_bins) 
+        random_clique = random_walk(contact_matrix, random_idx, n, num_molecules=num_molecules, alpha=alpha)
+        interaction_score = calculate_avg_interaction_strength(contact_matrix, random_clique)
+        interaction_scores.append(interaction_score)
+
+    # Plot the distribution
+    if plot:
+        plt.figure(figsize=(10, 6))
+        plt.hist(interaction_scores, bins=50, color='skyblue', edgecolor='black')
+        plt.xlabel('Average Interaction Score')
+        plt.ylabel('Frequency')
+        plt.title(f'Distribution of Average Interaction Scores for {num_molecules} Random Walks of Size {n}')
+        plt.show()
+
+    filename = f'/Users/ethan/Desktop/chromatin-heart-dev/background_models/rw_scores_{n}_molecules_{num_molecules}_iterations_{num_iterations}_strong.txt'
+    with open(filename, 'w') as f: 
+        for item in interaction_scores:
+            f.write("%s\n" % item)
+
+    return interaction_scores
+
+
+def create_background_model_rw_weak(contact_matrix, n, non_gene_bins, num_molecules=100, num_iterations=1000, alpha=0.05, plot=False):  
+    interaction_scores = []
+
+    for _ in tqdm(range(num_iterations), desc="Processing", unit="iteration"):
+        random_idx = np.random.choice(non_gene_bins) 
+        random_clique = random_walk(contact_matrix, random_idx, n, num_molecules=num_molecules, alpha=alpha)
+        interaction_score = calculate_avg_interaction_strength(contact_matrix, random_clique)
+        interaction_scores.append(interaction_score)
+
+    # Plot the distribution
+    if plot:
+        plt.figure(figsize=(10, 6))
+        plt.hist(interaction_scores, bins=50, color='skyblue', edgecolor='black')
+        plt.xlabel('Average Interaction Score')
+        plt.ylabel('Frequency')
+        plt.title(f'Distribution of Average Interaction Scores for {num_molecules} Random Walks of Size {n}')
+        plt.show()
+
+    filename = f'/Users/ethan/Desktop/chromatin-heart-dev/background_models/rw_scores_{n}_molecules_{num_molecules}_iterations_{num_iterations}_weak.txt'
+    with open(filename, 'w') as f: 
+        for item in interaction_scores:
+            f.write("%s\n" % item)
+
+    return interaction_scores
+
+
+def get_bins_on_gene(bin_map, gtf_file_path):   
+    gtf_cols = ["chrom", "source", "feature", "start", "end", "score", "strand", "frame", "attribute"]
+    gtf_df = pd.read_csv(gtf_file_path, sep="\t", comment="#", header=None, names=gtf_cols)
+    genes_df = gtf_df[gtf_df["feature"] == "gene"]
+
+    bins_on_genes = set()
+
+    for _, row in genes_df.iterrows():
+        gene_start = row["start"]
+        gene_chrom = row["chrom"]
+
+        bin = find_bin(gene_chrom, gene_start, bin_map)    
+        if bin is not None:
+            bins_on_genes.add(bin)
+
+    return list(bins_on_genes)
+
+def get_bins_not_on_gene(bin_map, gtf_file_path):   
+    gene_bins = []
+    with open('/Users/ethan/Desktop/chromatin-heart-dev/data/gene_bins.txt', 'r') as file:
+        for line in file:
+            gene_bins.append(line.strip())
+    gene_bins = [int(x) for x in gene_bins]
+
+    # All bins [0 to 30894]
+    all_bins = set(range(0, 30894))
+    bins_not_on_genes = all_bins - set(gene_bins)
+
+
+    return list(bins_not_on_genes)
+
+
 
 
 
@@ -283,6 +421,50 @@ def load_bin_map(file_path):
                 chromosome, _, _, bin_id = parts
                 bin_dict[int(bin_id)] = chromosome
     return bin_dict
+
+
+def get_chromosome_span(bins, bin_map):
+    chromosomes = set()
+    for bin_id in bins:
+        chromosome = bin_map[bin_id]
+        chromosomes.add(chromosome)
+
+    return chromosomes
+
+
+def load_bin_map_loc(file_path):
+    bin_dict = {}
+    with open(file_path, 'r') as file:
+        for line in file:
+            parts = line.strip().split('\t')
+            if len(parts) == 4:
+                chromosome, start, end, bin_id = parts
+                start, end, bin_id = int(start), int(end), int(bin_id)
+
+                # Store bin_id for the entire range
+                if chromosome not in bin_dict:
+                    bin_dict[chromosome] = []
+                bin_dict[chromosome].append((start, end, bin_id))
+
+    # Sort ranges for faster querying
+    for chrom in bin_dict:
+        bin_dict[chrom].sort()
+
+    return bin_dict
+
+import bisect
+
+def find_bin(chromosome, position, bin_dict):
+    if chromosome not in bin_dict:
+        return None  # Chromosome not found
+    
+    bins = bin_dict[chromosome]
+    idx = bisect.bisect_left(bins, (position,))  # Find closest start position
+
+    if idx > 0 and bins[idx - 1][0] <= position <= bins[idx - 1][1]:
+        return bins[idx - 1][2]  # Return bin_id
+
+    return None  # Position not found in any range
 
 
 

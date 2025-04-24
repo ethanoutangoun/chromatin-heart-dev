@@ -89,8 +89,10 @@ def random_walk(contact_matrix, start_node, n, num_molecules=100, alpha=0.1, ver
             current_node = next_node
 
     clique = np.argsort(visit_count)[-n:][::-1]
+
+
     
-    return clique
+    return clique, visit_count
 
 
 
@@ -365,26 +367,32 @@ def parse_gene_name(attribute):
     match = re.search(r'gene_name "([^"]+)"', attribute)
     return match.group(1) if match else None
 
-def get_gene_abbreviations_in_node(chromosome, bin_id, node_bed_path, gtf_file_path):
-    nodes_df = pd.read_csv(node_bed_path, sep="\t", header=None, names=["chrom", "start", "end", "bin"])
-    node_intervals = nodes_df[(nodes_df["chrom"] == chromosome) & (nodes_df["bin"] == bin_id)]
-    print('node_intervals:', node_intervals)    
 
+
+def find_gene_from_bin(bin_id, node_bed_path, gtf_file_path):
+    nodes_df = pd.read_csv(node_bed_path, sep="\t", header=None,
+                           names=["chrom", "start", "end", "bin"])
+    node_intervals = nodes_df[nodes_df["bin"] == bin_id]
     if node_intervals.empty:
-        print(f"No intervals found for chromosome {chromosome} and bin {bin_id}.")
         return []
+
+    gtf_cols = ["chrom", "source", "feature", "start", "end",
+                "score", "strand", "frame", "attribute"]
+    gtf_df = pd.read_csv(gtf_file_path, sep="\t", comment="#",
+                         header=None, names=gtf_cols)
     
-    gtf_cols = ["chrom", "source", "feature", "start", "end", "score", "strand", "frame", "attribute"]
-    gtf_df = pd.read_csv(gtf_file_path, sep="\t", comment="#", header=None, names=gtf_cols)
-    genes_df = gtf_df[gtf_df["feature"] == "gene"]
-    genes_df = genes_df[genes_df["chrom"] == str(chromosome)]
+    genes_df = gtf_df.loc[gtf_df["feature"] == "gene"].copy()
     genes_df["gene_name"] = genes_df["attribute"].apply(parse_gene_name)
-    
+
+    # collect overlaps
     gene_abbrevs = set()
     for _, node in node_intervals.iterrows():
-        overlaps = genes_df[(genes_df["start"] < node["end"]) & (genes_df["end"] > node["start"])]
-        gene_abbrevs.update(overlaps["gene_name"].dropna().tolist())
-    
+        overlaps = genes_df[
+            (genes_df["start"] < node["end"]) &
+            (genes_df["end"] > node["start"])
+        ]
+        gene_abbrevs.update(overlaps["gene_name"].dropna())
+
     return list(gene_abbrevs)
 
 def find_ttn_bin(gtf_file_path, node_bed_path):

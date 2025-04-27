@@ -5,6 +5,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import re
 from tqdm import tqdm
+import os
 
 # Clique finding algorithms
 def find_clique_greedy(contact_matrix, n, target_bin=None, bin_map=None):
@@ -60,8 +61,51 @@ def find_clique_greedy(contact_matrix, n, target_bin=None, bin_map=None):
         
     return clique
 
+def find_clique_greedy_fast(contact_matrix, n, target_bin=None):
+    """
+    Greedy clique of size n, optimized via NumPy vector operations.
+    Assumes contact_matrix[i, j] == 0 whenever i and j are on the same chromosome.
+    """
+    N = contact_matrix.shape[0]
+    # 1) pick a starting node
+    if target_bin is None:
+        current = np.random.randint(N)
+    else:
+        current = target_bin
 
+    clique = [current]
 
+    # 2) boolean array of bins we cannot pick
+    excluded = np.zeros(N, dtype=bool)
+    # exclude ±10 around the start
+    lo, hi = max(0, current - 10), min(N, current + 11)
+    excluded[lo:hi] = True
+
+    # 3) greedy growing
+    while len(clique) < n:
+        # a) compute total interaction of every node with the current clique
+        #    this gives an (N,) array of sums
+        sums = contact_matrix[:, clique].sum(axis=1)
+
+        # b) mean = sums / |clique|
+        means = sums / len(clique)
+
+        # c) mask out already excluded or already in clique
+        means[excluded] = -np.inf
+        means[clique]   = -np.inf
+
+        # d) pick the best new node
+        max_node = int(np.argmax(means))
+        if means[max_node] == -np.inf:
+            # no more valid candidates
+            break
+
+        # e) add to clique and update exclusion window
+        clique.append(max_node)
+        lo, hi = max(0, max_node - 10), min(N, max_node + 11)
+        excluded[lo:hi] = True
+
+    return clique
 
 def random_walk(contact_matrix, start_node, n, num_molecules=100, alpha=0.1, verbose=False):
     num_nodes = contact_matrix.shape[0]
@@ -92,197 +136,193 @@ def random_walk(contact_matrix, start_node, n, num_molecules=100, alpha=0.1, ver
 
 
     
-    return clique, visit_count
+    return clique
 
+def random_walk_fast(contact_matrix, start_node, n,
+                     neighbors, cdfs,
+                     num_molecules=100, alpha=0.1):
+    """
+    A much faster random‐walk using prebuilt neighbor/CDF lists.
+    """
+    N = contact_matrix.shape[0]
+    visit_count = np.zeros(N, dtype=int)
 
+    for _ in range(num_molecules):
+        cur = start_node
+        while True:
+            visit_count[cur] += 1
+            if np.random.rand() < alpha or neighbors[cur].size == 0:
+                break
+            r = np.random.rand()
+            # find next index in CDF
+            j = np.searchsorted(cdfs[cur], r, side='right')
+            cur = neighbors[cur][j]
 
+    # top-n visited
+    return np.argsort(visit_count)[-n:][::-1]
 
-# Background Model Generation
-def create_background_model_greedy(contact_matrix, clique_size, bin_map, num_iterations=1000, display=True):
-    interaction_scores = []
+def create_background_model_greedy(
+    contact_matrix,
+    clique_size,
+    bin_map,
+    bins,
+    label=None,
+    num_iterations=1000,
+    display=True,
+    write=True,
+):
+    """
+    Generate a background distribution of average interaction scores by
+    repeatedly finding random greedy cliques.
 
-    # Use tqdm to display a progress bar
-    for _ in tqdm(range(num_iterations), desc="Processing", unit="iteration"):
-        random_clique = find_clique_greedy(contact_matrix, clique_size, bin_map=bin_map)
-        score = calculate_avg_interaction_strength(contact_matrix, random_clique)
-        interaction_scores.append(score)
+    Parameters
+    ----------
+    contact_matrix : array-like
+        Hi-C contact matrix.
+    clique_size : int
+        Number of bins in each clique.
+    bin_map : dict
+        Mapping from bin index to matrix coordinates.
+    bins : sequence of int
+        List of bin indices to sample from (e.g. gene_bins or non_gene_bins).
+    label : str
+        Identifier to append to the output filename (e.g. 'strong' or 'weak').
+    num_iterations : int, optional
+        How many random cliques to sample (default 1000).
+    display : bool, optional
+        If True, show a histogram of the scores (default True).
+    output_dir : str or None, optional
+        Directory to write the score file. If None, uses cwd/background_models.
+    """
+    if label is None:
+        label = 'all'
+
+    output_dir = os.path.join(os.getcwd(), 'background_models', 'random_walk')
+    os.makedirs(output_dir, exist_ok=True)
+
+    scores = []
+    for _ in tqdm(range(num_iterations), desc="Sampling cliques", unit="iter"):
+        seed_bin = np.random.choice(bins)
+        clique = find_clique_greedy(
+            contact_matrix,
+            clique_size,
+            bin_map=bin_map,
+            target_bin=seed_bin
+        )
+        scores.append(calculate_avg_interaction_strength(contact_matrix, clique))
 
     if display:
         plt.figure(figsize=(10, 6))
-        plt.hist(interaction_scores, bins=50, color='skyblue', edgecolor='black')
+        plt.hist(scores, bins=50, edgecolor='black')
         plt.xlabel('Average Interaction Score')
         plt.ylabel('Frequency')
-        plt.title(f'Distribution of AIS using Greedy for {num_iterations} Random Cliques of Size {clique_size}')
+        plt.title(
+            f'Distribution of AIS ({label}) – '
+            f'{num_iterations} random cliques of size {clique_size}'
+        )
+        plt.tight_layout()
         plt.show()
 
-    filename = f'/Users/ethan/Desktop/chromatin-heart-dev/background_models/greedy_scores_{clique_size}_iterations_{num_iterations}.txt'
-    with open(filename, 'w') as f: 
-        for item in interaction_scores:
-            f.write("%s\n" % item)
-
-    return interaction_scores
-
-def create_background_model_greedy_strong(contact_matrix, clique_size, bin_map, gene_bins, num_iterations=1000, display=True):
-    interaction_scores = []
-
-    # Use tqdm to display a progress bar
-    for _ in tqdm(range(num_iterations), desc="Processing", unit="iteration"):
-        random_idx = np.random.choice(gene_bins) 
-        random_clique = find_clique_greedy(contact_matrix, clique_size, bin_map=bin_map, target_bin=random_idx)
-        score = calculate_avg_interaction_strength(contact_matrix, random_clique)
-        interaction_scores.append(score)
-
-    if display:
-        plt.figure(figsize=(10, 6))
-        plt.hist(interaction_scores, bins=50, color='skyblue', edgecolor='black')
-        plt.xlabel('Average Interaction Score')
-        plt.ylabel('Frequency')
-        plt.title(f'Distribution of AIS using Greedy for {num_iterations} Random Cliques of Size {clique_size}')
-        plt.show()
-
-    filename = f'/Users/ethan/Desktop/chromatin-heart-dev/background_models/greedy_scores_{clique_size}_iterations_{num_iterations}_strong.txt'
-    with open(filename, 'w') as f: 
-        for item in interaction_scores:
-            f.write("%s\n" % item)
-
-    return interaction_scores
-
-def create_background_model_greedy_weak(contact_matrix, clique_size, bin_map, non_gene_bins, num_iterations=1000, display=True):
-    interaction_scores = []
-
-    # Use tqdm to display a progress bar
-    for _ in tqdm(range(num_iterations), desc="Processing", unit="iteration"):
-        random_idx = np.random.choice(non_gene_bins) 
-        random_clique = find_clique_greedy(contact_matrix, clique_size, bin_map=bin_map, target_bin=random_idx)
-        score = calculate_avg_interaction_strength(contact_matrix, random_clique)
-        interaction_scores.append(score)
-
-    if display:
-        plt.figure(figsize=(10, 6))
-        plt.hist(interaction_scores, bins=50, color='skyblue', edgecolor='black')
-        plt.xlabel('Average Interaction Score')
-        plt.ylabel('Frequency')
-        plt.title(f'Distribution of AIS using Greedy for {num_iterations} Random Cliques of Size {clique_size}')
-        plt.show()
-
-    filename = f'/Users/ethan/Desktop/chromatin-heart-dev/background_models/greedy_scores_{clique_size}_iterations_{num_iterations}_weak.txt'
-    with open(filename, 'w') as f: 
-        for item in interaction_scores:
-            f.write("%s\n" % item)
-
-    return interaction_scores
+    if write:   
+        fname = f'greedy_scores_{clique_size}_iters_{num_iterations}_{label}.txt'
+        outpath = os.path.join(output_dir, fname)
+        with open(outpath, 'w') as fh:
+            for s in scores:
+                fh.write(f"{s}\n")
+    
+    return scores
 
 
-def create_background_model_rw(contact_matrix, n, num_molecules=100, num_iterations=1000, alpha=0.05):   
-    interaction_scores = []
 
-    for _ in tqdm(range(num_iterations), desc="Processing", unit="iteration"):
-        random_idx = np.random.randint(0, contact_matrix.shape[0])  
-        random_clique = random_walk(contact_matrix, random_idx, n, num_molecules=num_molecules, alpha=alpha)
-        interaction_score = calculate_avg_interaction_strength(contact_matrix, random_clique)
-        interaction_scores.append(interaction_score)
+def create_background_model_rw(
+    contact_matrix,
+    n,
+    bins=None,
+    label=None,
+    neighbors=None,
+    cdfs=None,
+    num_molecules=100,
+    num_iterations=1000,
+    alpha=0.05,
+    plot=True,
+    write=True,
+):
+    """
+    Generate a background distribution of average interaction scores
+    using random walks.
 
-    # Plot the distribution
-    plt.figure(figsize=(10, 6))
-    plt.hist(interaction_scores, bins=50, color='skyblue', edgecolor='black')
-    plt.xlabel('Average Interaction Score')
-    plt.ylabel('Frequency')
-    plt.title(f'Distribution of Average Interaction Scores for {num_molecules} Random Walks of Size {n}')
-    plt.show()
+    Parameters
+    ----------
+    contact_matrix : array-like
+        Hi-C contact matrix.
+    n : int
+        Length of each random walk.
+    bins : sequence of int, optional
+        Which bin-indices to seed from (e.g. gene_bins or non_gene_bins).
+        If None, samples from all bins (0..matrix.shape[0]-1).
+    label : str, optional
+        Text to include in the output filename/title (e.g. 'strong' or 'weak').
+        If None, defaults to 'all'.
+    num_molecules : int, optional
+        Number of walkers per random walk (default 100).
+    num_iterations : int, optional
+        Number of random walks to draw (default 1000).
+    alpha : float, optional
+        Restart probability for the random walk (default 0.05).
+    plot : bool, optional
+        Whether to display a histogram (default True).
+    output_dir : str, optional
+        Directory to write the score file. If None, uses
+        cwd/background_models.
+    """
+    
 
-    filename = f'/Users/ethan/Desktop/chromatin-heart-dev/background_models/rw_scores_{n}_molecules_{num_molecules}_iterations_{num_iterations}.txt'
-    with open(filename, 'w') as f: 
-        for item in interaction_scores:
-            f.write("%s\n" % item)
+    # prepare bins and label
+    if bins is None:
+        bins = np.arange(contact_matrix.shape[0])
+    if label is None:
+        label = 'all'
 
-    return interaction_scores
+    # prepare output directory
+    output_dir = os.path.join(os.getcwd(), 'background_models', 'random_walk')
+    os.makedirs(output_dir, exist_ok=True)
 
+    # sample
+    scores = []
+    for _ in tqdm(range(num_iterations), desc="Random walks", unit="iter"):
+        seed = np.random.choice(bins)
+        clique = random_walk_fast(
+            contact_matrix,
+            seed,
+            n,
+            neighbors= neighbors,
+            cdfs=cdfs,
+            num_molecules=num_molecules,
+            alpha=alpha
+        )
+        scores.append(calculate_avg_interaction_strength(contact_matrix, clique))
 
-def create_background_model_rw_strong(contact_matrix, n, gene_bins, num_molecules=100, num_iterations=1000, alpha=0.05, plot=False):    
-
-    interaction_scores = []
-
-    for _ in tqdm(range(num_iterations), desc="Processing", unit="iteration"):
-        random_idx = np.random.choice(gene_bins) 
-        random_clique = random_walk(contact_matrix, random_idx, n, num_molecules=num_molecules, alpha=alpha)
-        interaction_score = calculate_avg_interaction_strength(contact_matrix, random_clique)
-        interaction_scores.append(interaction_score)
-
-    # Plot the distribution
+    # plot
     if plot:
         plt.figure(figsize=(10, 6))
-        plt.hist(interaction_scores, bins=50, color='skyblue', edgecolor='black')
+        plt.hist(scores, bins=50, edgecolor='black')
         plt.xlabel('Average Interaction Score')
         plt.ylabel('Frequency')
-        plt.title(f'Distribution of Average Interaction Scores for {num_molecules} Random Walks of Size {n}')
+        plt.title(
+            f'Distribution of AIS ({label}) — '
+            f'{num_molecules} walks of length {n}'
+        )
+        plt.tight_layout()
         plt.show()
 
-    filename = f'/Users/ethan/Desktop/chromatin-heart-dev/background_models/rw_scores_{n}_molecules_{num_molecules}_iterations_{num_iterations}_strong.txt'
-    with open(filename, 'w') as f: 
-        for item in interaction_scores:
-            f.write("%s\n" % item)
+    if write:
+        fname = f'rw_scores_{n}_molecules_{num_molecules}_iters_{num_iterations}_alpha_{alpha}_{label}.txt'
+        path = os.path.join(output_dir, fname)
+        with open(path, 'w') as fh:
+            for s in scores:
+                fh.write(f"{s}\n")
 
-    return interaction_scores
-
-
-def create_background_model_rw_weak(contact_matrix, n, non_gene_bins, num_molecules=100, num_iterations=1000, alpha=0.05, plot=False):  
-    interaction_scores = []
-
-    for _ in tqdm(range(num_iterations), desc="Processing", unit="iteration"):
-        random_idx = np.random.choice(non_gene_bins) 
-        random_clique = random_walk(contact_matrix, random_idx, n, num_molecules=num_molecules, alpha=alpha)
-        interaction_score = calculate_avg_interaction_strength(contact_matrix, random_clique)
-        interaction_scores.append(interaction_score)
-
-    # Plot the distribution
-    if plot:
-        plt.figure(figsize=(10, 6))
-        plt.hist(interaction_scores, bins=50, color='skyblue', edgecolor='black')
-        plt.xlabel('Average Interaction Score')
-        plt.ylabel('Frequency')
-        plt.title(f'Distribution of Average Interaction Scores for {num_molecules} Random Walks of Size {n}')
-        plt.show()
-
-    filename = f'/Users/ethan/Desktop/chromatin-heart-dev/background_models/rw_scores_{n}_molecules_{num_molecules}_iterations_{num_iterations}_weak.txt'
-    with open(filename, 'w') as f: 
-        for item in interaction_scores:
-            f.write("%s\n" % item)
-
-    return interaction_scores
-
-
-def get_bins_on_gene(bin_map, gtf_file_path):   
-    gtf_cols = ["chrom", "source", "feature", "start", "end", "score", "strand", "frame", "attribute"]
-    gtf_df = pd.read_csv(gtf_file_path, sep="\t", comment="#", header=None, names=gtf_cols)
-    genes_df = gtf_df[gtf_df["feature"] == "gene"]
-
-    bins_on_genes = set()
-
-    for _, row in genes_df.iterrows():
-        gene_start = row["start"]
-        gene_chrom = row["chrom"]
-
-        bin = find_bin(gene_chrom, gene_start, bin_map)    
-        if bin is not None:
-            bins_on_genes.add(bin)
-
-    return list(bins_on_genes)
-
-def get_bins_not_on_gene(bin_map, gtf_file_path):   
-    gene_bins = []
-    with open('/Users/ethan/Desktop/chromatin-heart-dev/data/gene_bins.txt', 'r') as file:
-        for line in file:
-            gene_bins.append(line.strip())
-    gene_bins = [int(x) for x in gene_bins]
-
-    # All bins [0 to 30894]
-    all_bins = set(range(0, 30894))
-    bins_not_on_genes = all_bins - set(gene_bins)
-
-
-    return list(bins_not_on_genes)
-
-
+    return scores
 
 
 
@@ -361,15 +401,12 @@ def clique_to_graph(contact_matrix, clique, selected_bin = None):
 
 
 
-
-# Helpers for post clustering analysis
-def parse_gene_name(attribute):
-    match = re.search(r'gene_name "([^"]+)"', attribute)
-    return match.group(1) if match else None
-
-
-
+# Finds all genes overlapping with a given bin
 def find_gene_from_bin(bin_id, node_bed_path, gtf_file_path):
+    def parse_gene_name(attribute):
+        match = re.search(r'gene_name "([^"]+)"', attribute)
+        return match.group(1) if match else None
+
     nodes_df = pd.read_csv(node_bed_path, sep="\t", header=None,
                            names=["chrom", "start", "end", "bin"])
     node_intervals = nodes_df[nodes_df["bin"] == bin_id]
@@ -395,6 +432,8 @@ def find_gene_from_bin(bin_id, node_bed_path, gtf_file_path):
 
     return list(gene_abbrevs)
 
+
+
 def find_ttn_bin(gtf_file_path, node_bed_path):
     gtf_cols = ["chrom", "source", "feature", "start", "end", "score", "strand", "frame", "attribute"]
     gtf_df = pd.read_csv(gtf_file_path, sep="\t", comment="#", header=None, names=gtf_cols)
@@ -419,6 +458,7 @@ def find_ttn_bin(gtf_file_path, node_bed_path):
         return None
     
     return overlapping_bins["bin"].tolist()
+
 
 def load_bin_map(file_path):
     bin_dict = {}
@@ -500,45 +540,4 @@ def generate_sample_matrix_bins(n_bins):
     np.fill_diagonal(contact_matrix, 0)
 
     return contact_matrix
-
-def construct_graph_from_contact_matrix(contact_matrix, threshold=0):
-    if isinstance(contact_matrix, np.ndarray):
-        contact_matrix = pd.DataFrame(contact_matrix)
-    
-    if contact_matrix.shape[0] != contact_matrix.shape[1]:
-        raise ValueError("Contact matrix must be square.")
-    
-    graph = nx.Graph()
-    num_bins = contact_matrix.shape[0]
-
-    # Add nodes to the graph 
-    graph.add_nodes_from(range(num_bins))
-    
-    for i in range(num_bins):
-        for j in range(i + 1, num_bins): 
-            weight = contact_matrix.iloc[i, j]
-            if weight > threshold:
-                graph.add_edge(i, j, weight=weight)
-
-    # Define positions using spring layout
-    pos = nx.spring_layout(graph, seed=42, k=1.5)
-    plt.figure(figsize=(10, 10))
-    
-    # Draw nodes
-    nx.draw_networkx_nodes(graph, pos, node_size=500, node_color='lightblue', edgecolors='black')
-    
-    # Draw edges with width proportional to weight
-    edges = graph.edges(data=True)
-    nx.draw_networkx_edges(graph, pos, edgelist=edges, width=[d['weight'] * 0.2 for (_, _, d) in edges], alpha=0.7)
-    
-    nx.draw_networkx_labels(graph, pos, font_size=12, font_color='black', font_weight='bold')
-    
-    # Draw edge labels (weights)
-    edge_labels = {(i, j): f"{d['weight']:.1f}" for i, j, d in edges}
-    nx.draw_networkx_edge_labels(graph, pos, edge_labels=edge_labels, font_size=10, font_color='red')
-    
-    plt.title("Graph Representation of Contact Matrix", fontsize=14)
-    plt.show()
-    
-    return graph
 

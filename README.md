@@ -11,6 +11,11 @@ Repository for Chromatin Analysis during Heart Development
 Do all environment and configurations steps from within the login node instead of computer nodes to avoid using credits while idle/installing dependencies.
 
 ### Terminal A
+SSH into login node
+
+```bash
+ssh [username]@login.expanse.sdsc.edu
+```
 
 Load SLURM module to act as Client to Request Interactive Node
 

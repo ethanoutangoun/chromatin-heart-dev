@@ -1,5 +1,4 @@
-
-
+from scipy import stats
 
 def calculate_avg_interaction_strength(contact_matrix, clique):
     total_interaction_strength = 0
@@ -16,3 +15,19 @@ def calculate_avg_interaction_strength(contact_matrix, clique):
     # Calculate average interaction strength
     avg_interaction_strength = total_interaction_strength / num_edges if num_edges > 0 else 0
     return avg_interaction_strength
+
+
+def t_test(observed_score, score_list):
+    t_stat, p_value = stats.ttest_1samp(score_list, observed_score)
+    return p_value
+
+
+def mann_whitney_u_test(ttn_score, random_scores):
+    ttn_array = np.array([ttn_score] * len(random_scores)) 
+    u_statistic, p_value = stats.mannwhitneyu(ttn_array, random_scores, alternative='greater')
+    return p_value
+
+def empirical_p_value(observed_score, random_scores):
+    count = sum(score >= observed_score for score in random_scores)
+    p_value = count / len(random_scores)
+    return p_value

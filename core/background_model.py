@@ -61,14 +61,14 @@ def create_greedy(
 
 def create_rw(
     contact_matrix,
-    n,
+    clique_size,
     bins=None,
-    label=None,
     neighbors=None,
     cdfs=None,
     num_molecules=100,
     num_iterations=1000,
     alpha=0.05,
+    label=None,
     plot=True,
     write=True,
 ):
@@ -95,7 +95,7 @@ def create_rw(
         clique = random_walk(
             contact_matrix,
             seed,
-            n,
+            clique_size,
             neighbors= neighbors,
             cdfs=cdfs,
             num_molecules=num_molecules,
@@ -111,7 +111,7 @@ def create_rw(
         plt.ylabel('Frequency')
         plt.title(
             f'Distribution of AIS ({label}) — '
-            f'{num_molecules} walks of length {n}'
+            f'{num_molecules} walks of length {clique_size} '
         )
         plt.tight_layout()
         plt.show()

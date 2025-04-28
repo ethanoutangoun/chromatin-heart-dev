@@ -7,341 +7,10 @@ import re
 from tqdm import tqdm
 import os
 
-# Clique finding algorithms
-def find_clique_greedy(contact_matrix, n, target_bin=None, bin_map=None):
-    if target_bin is not None:
-        clique = [target_bin]
-        chromosomes = {bin_map.get(target_bin, None)}
-    else:
-        initial_node = np.random.randint(0, contact_matrix.shape[0])
-        clique = [initial_node]
-        chromosomes = {bin_map.get(initial_node, None)}
-
-    excluded_bins = set()
-    edges = []
-
-    while len(clique) < n:
-        max_mean_edge = -1
-        max_node = None
-        best_connection = None
-
-        for node in range(contact_matrix.shape[0]):
-            if node not in clique and node not in excluded_bins:
-                # Calculate mean interaction with all nodes in the clique
-                sum_connections = 0
-                count = 0
-
-                for c in clique:
-                    if bin_map.get(node, None) == bin_map.get(c, None):
-                        sum_connections += 0
-                    else:
-                        sum_connections += contact_matrix[node, c]
-                    count += 1
-
-                mean_connection = sum_connections / count if count > 0 else 0
-
-
-                if mean_connection > max_mean_edge:
-                    max_mean_edge = mean_connection
-                    max_node = node
-                    best_connection = (node, max(clique, key=lambda c: contact_matrix[node, c]), mean_connection)
-
-        if max_node is None:
-            break
-
-        clique.append(max_node)
-        
-        # exclude nodes +-10 bins from the selected node
-        excluded_bins.add(max_node)
-        for i in range(max_node - 10, max_node + 11):
-            excluded_bins.add(i)
-
-        chromosomes.add(bin_map.get(max_node, None))
-        edges.append(best_connection)
-        
-    return clique
-
-def find_clique_greedy_fast(contact_matrix, n, target_bin=None):
-    """
-    Greedy clique of size n, optimized via NumPy vector operations.
-    Assumes contact_matrix[i, j] == 0 whenever i and j are on the same chromosome.
-    """
-    N = contact_matrix.shape[0]
-    # 1) pick a starting node
-    if target_bin is None:
-        current = np.random.randint(N)
-    else:
-        current = target_bin
-
-    clique = [current]
-
-    # 2) boolean array of bins we cannot pick
-    excluded = np.zeros(N, dtype=bool)
-    # exclude ±10 around the start
-    lo, hi = max(0, current - 10), min(N, current + 11)
-    excluded[lo:hi] = True
-
-    # 3) greedy growing
-    while len(clique) < n:
-        # a) compute total interaction of every node with the current clique
-        #    this gives an (N,) array of sums
-        sums = contact_matrix[:, clique].sum(axis=1)
-
-        # b) mean = sums / |clique|
-        means = sums / len(clique)
-
-        # c) mask out already excluded or already in clique
-        means[excluded] = -np.inf
-        means[clique]   = -np.inf
-
-        # d) pick the best new node
-        max_node = int(np.argmax(means))
-        if means[max_node] == -np.inf:
-            # no more valid candidates
-            break
-
-        # e) add to clique and update exclusion window
-        clique.append(max_node)
-        lo, hi = max(0, max_node - 10), min(N, max_node + 11)
-        excluded[lo:hi] = True
-
-    return clique
-
-def random_walk(contact_matrix, start_node, n, num_molecules=100, alpha=0.1, verbose=False):
-    num_nodes = contact_matrix.shape[0]
-    visit_count = np.zeros(num_nodes, dtype=int)
-    
-    iterator = tqdm(range(num_molecules)) if verbose else range(num_molecules)
-    
-    for _ in iterator: 
-        current_node = start_node
-        
-        while True:
-            visit_count[current_node] += 1  # Track visits per molecule
-            
-            if np.random.rand() < alpha:
-                break
-            
-            neighbors = np.where(contact_matrix[current_node] > 0)[0]
-            if len(neighbors) == 0:
-                break
-            
-            weights = contact_matrix[current_node, neighbors]
-            probabilities = weights / np.sum(weights)
-            
-            next_node = np.random.choice(neighbors, p=probabilities)
-            current_node = next_node
-
-    clique = np.argsort(visit_count)[-n:][::-1]
-
-
-    
-    return clique
-
-def random_walk_fast(contact_matrix, start_node, n,
-                     neighbors, cdfs,
-                     num_molecules=100, alpha=0.1):
-    """
-    A much faster random‐walk using prebuilt neighbor/CDF lists.
-    """
-    N = contact_matrix.shape[0]
-    visit_count = np.zeros(N, dtype=int)
-
-    for _ in range(num_molecules):
-        cur = start_node
-        while True:
-            visit_count[cur] += 1
-            if np.random.rand() < alpha or neighbors[cur].size == 0:
-                break
-            r = np.random.rand()
-            # find next index in CDF
-            j = np.searchsorted(cdfs[cur], r, side='right')
-            cur = neighbors[cur][j]
-
-    # top-n visited
-    return np.argsort(visit_count)[-n:][::-1]
-
-def create_background_model_greedy(
-    contact_matrix,
-    clique_size,
-    bin_map,
-    bins,
-    label=None,
-    num_iterations=1000,
-    display=True,
-    write=True,
-):
-    """
-    Generate a background distribution of average interaction scores by
-    repeatedly finding random greedy cliques.
-
-    Parameters
-    ----------
-    contact_matrix : array-like
-        Hi-C contact matrix.
-    clique_size : int
-        Number of bins in each clique.
-    bin_map : dict
-        Mapping from bin index to matrix coordinates.
-    bins : sequence of int
-        List of bin indices to sample from (e.g. gene_bins or non_gene_bins).
-    label : str
-        Identifier to append to the output filename (e.g. 'strong' or 'weak').
-    num_iterations : int, optional
-        How many random cliques to sample (default 1000).
-    display : bool, optional
-        If True, show a histogram of the scores (default True).
-    output_dir : str or None, optional
-        Directory to write the score file. If None, uses cwd/background_models.
-    """
-    if label is None:
-        label = 'all'
-
-    output_dir = os.path.join(os.getcwd(), 'background_models', 'random_walk')
-    os.makedirs(output_dir, exist_ok=True)
-
-    scores = []
-    for _ in tqdm(range(num_iterations), desc="Sampling cliques", unit="iter"):
-        seed_bin = np.random.choice(bins)
-        clique = find_clique_greedy(
-            contact_matrix,
-            clique_size,
-            bin_map=bin_map,
-            target_bin=seed_bin
-        )
-        scores.append(calculate_avg_interaction_strength(contact_matrix, clique))
-
-    if display:
-        plt.figure(figsize=(10, 6))
-        plt.hist(scores, bins=50, edgecolor='black')
-        plt.xlabel('Average Interaction Score')
-        plt.ylabel('Frequency')
-        plt.title(
-            f'Distribution of AIS ({label}) – '
-            f'{num_iterations} random cliques of size {clique_size}'
-        )
-        plt.tight_layout()
-        plt.show()
-
-    if write:   
-        fname = f'greedy_scores_{clique_size}_iters_{num_iterations}_{label}.txt'
-        outpath = os.path.join(output_dir, fname)
-        with open(outpath, 'w') as fh:
-            for s in scores:
-                fh.write(f"{s}\n")
-    
-    return scores
 
 
 
-def create_background_model_rw(
-    contact_matrix,
-    n,
-    bins=None,
-    label=None,
-    neighbors=None,
-    cdfs=None,
-    num_molecules=100,
-    num_iterations=1000,
-    alpha=0.05,
-    plot=True,
-    write=True,
-):
-    """
-    Generate a background distribution of average interaction scores
-    using random walks.
 
-    Parameters
-    ----------
-    contact_matrix : array-like
-        Hi-C contact matrix.
-    n : int
-        Length of each random walk.
-    bins : sequence of int, optional
-        Which bin-indices to seed from (e.g. gene_bins or non_gene_bins).
-        If None, samples from all bins (0..matrix.shape[0]-1).
-    label : str, optional
-        Text to include in the output filename/title (e.g. 'strong' or 'weak').
-        If None, defaults to 'all'.
-    num_molecules : int, optional
-        Number of walkers per random walk (default 100).
-    num_iterations : int, optional
-        Number of random walks to draw (default 1000).
-    alpha : float, optional
-        Restart probability for the random walk (default 0.05).
-    plot : bool, optional
-        Whether to display a histogram (default True).
-    output_dir : str, optional
-        Directory to write the score file. If None, uses
-        cwd/background_models.
-    """
-    
-
-    # prepare bins and label
-    if bins is None:
-        bins = np.arange(contact_matrix.shape[0])
-    if label is None:
-        label = 'all'
-
-    # prepare output directory
-    output_dir = os.path.join(os.getcwd(), 'background_models', 'random_walk')
-    os.makedirs(output_dir, exist_ok=True)
-
-    # sample
-    scores = []
-    for _ in tqdm(range(num_iterations), desc="Random walks", unit="iter"):
-        seed = np.random.choice(bins)
-        clique = random_walk_fast(
-            contact_matrix,
-            seed,
-            n,
-            neighbors= neighbors,
-            cdfs=cdfs,
-            num_molecules=num_molecules,
-            alpha=alpha
-        )
-        scores.append(calculate_avg_interaction_strength(contact_matrix, clique))
-
-    # plot
-    if plot:
-        plt.figure(figsize=(10, 6))
-        plt.hist(scores, bins=50, edgecolor='black')
-        plt.xlabel('Average Interaction Score')
-        plt.ylabel('Frequency')
-        plt.title(
-            f'Distribution of AIS ({label}) — '
-            f'{num_molecules} walks of length {n}'
-        )
-        plt.tight_layout()
-        plt.show()
-
-    if write:
-        fname = f'rw_scores_{n}_molecules_{num_molecules}_iters_{num_iterations}_alpha_{alpha}_{label}.txt'
-        path = os.path.join(output_dir, fname)
-        with open(path, 'w') as fh:
-            for s in scores:
-                fh.write(f"{s}\n")
-
-    return scores
-
-
-
-# Scoring and testing functions
-def calculate_avg_interaction_strength(contact_matrix, clique):
-    total_interaction_strength = 0
-    num_edges = 0
-
-    # Loop through each unique pair of bins in the clique to get score of each edge
-    for i in range(len(clique)):
-        for j in range(i + 1, len(clique)):
-            bin1 = clique[i]
-            bin2 = clique[j]
-            total_interaction_strength += contact_matrix[bin1, bin2]
-            num_edges += 1
-
-    # Calculate average interaction strength
-    avg_interaction_strength = total_interaction_strength / num_edges if num_edges > 0 else 0
-    return avg_interaction_strength
 
 def simple_p_test(observed_score, random_scores):
     return np.mean(random_scores >= observed_score)
@@ -367,8 +36,6 @@ def permutation_test(contact_matrix, start_node, n, num_molecules=100, alpha=0.1
         p_values[i] = p_value
     
     return real_top_nodes, p_values, permuted_top_nodes
-
-
 
 # Function for displaying found clique as a fully connected graph
 def clique_to_graph(contact_matrix, clique, selected_bin = None):
@@ -501,6 +168,27 @@ def load_bin_map_loc(file_path):
     return bin_dict
 
 
+def build_walk_index(contact_matrix):
+    """
+    Precompute for each node:
+      - neighbors[i]: 1D int array of neighbors
+      - cdfs[i]:      1D float array of cumulative probabilities
+    """
+    N = contact_matrix.shape[0]
+    neighbors = [None]*N
+    cdfs      = [None]*N
+
+    for i in tqdm(range(N)):
+        w = contact_matrix[i]
+        idx = np.nonzero(w)[0]
+        if idx.size == 0:
+            neighbors[i] = np.empty(0, dtype=int)
+            cdfs[i]      = np.empty(0, dtype=float)
+        else:
+            probs = w[idx] / w[idx].sum()
+            neighbors[i] = idx
+            cdfs[i]      = np.cumsum(probs)
+    return neighbors, cdfs
 
 
 import bisect
@@ -568,4 +256,3 @@ def generate_sample_matrix_bins(n_bins):
     np.fill_diagonal(contact_matrix, 0)
 
     return contact_matrix
-

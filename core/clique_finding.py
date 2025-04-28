@@ -5,9 +5,9 @@ from tqdm import tqdm
 
 def find_greedy_clique(contact_matrix, n, target_bin=None):
     """
-    Greedy clique of size n, optimized via NumPy vector operations.
+    Find a clique of size n in the contact matrix using a greedy algorithm.
     Assumes contact_matrix[i, j] == 0 whenever i and j are on the same chromosome.
-    Use zero_chrom.py to modify contact matrix to zero out same chromosome bins.
+    Use utils/zero_chrom.py if needed to create such a matrix.
     """
     N = contact_matrix.shape[0]
     # 1) pick a starting node

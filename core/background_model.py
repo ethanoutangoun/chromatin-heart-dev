@@ -59,7 +59,76 @@ def create_greedy(
 
 
 
+
 def create_rw(
+    contact_matrix,
+    clique_size,
+    num_iterations=1000,
+    bins=None,
+    neighbors=None,
+    cdfs=None,
+    num_molecules=1000,
+    alpha=0.05,
+    label=None,
+    plot=True,
+    write=True,
+):
+    """
+    Generate a background distribution of average interaction scores
+    using random walks.
+    """
+
+    if bins is None:
+        bins = np.arange(contact_matrix.shape[0])
+    if label is None:
+        label = 'all'
+
+    output_dir = 'background_models/random_walk'
+    os.makedirs(output_dir, exist_ok=True)
+
+    scores = np.empty(num_iterations)
+
+    for i in tqdm(range(num_iterations), desc="Random walks", unit="iter"):
+        seed = np.random.choice(bins)
+        clique = random_walk(
+            contact_matrix,
+            seed,
+            clique_size,
+            neighbors=neighbors,
+            cdfs=cdfs,
+            num_molecules=num_molecules,
+            alpha=alpha
+        )
+        scores[i] = calculate_avg_interaction_strength(contact_matrix, clique)
+
+    if plot:
+        plt.figure(figsize=(10, 6))
+        plt.hist(scores, bins=50, edgecolor='black')
+        plt.xlabel('Average Interaction Score')
+        plt.ylabel('Frequency')
+        plt.title(
+            f'Distribution of AIS ({label}) — '
+            f'{num_molecules} walks of length {clique_size}'
+        )
+        plt.tight_layout()
+        plt.show()
+
+    if write:
+        fname = f'rw_scores_{clique_size}_molecules_{num_molecules}_iters_{num_iterations}_alpha_{alpha}_{label}.txt'
+        path = os.path.join(output_dir, fname)
+        np.savetxt(path, scores, fmt='%.6f')  
+
+    return scores
+
+
+
+import os
+import numpy as np
+from tqdm import tqdm
+import matplotlib.pyplot as plt
+from joblib import Parallel, delayed
+
+def create_rw_parallel(
     contact_matrix,
     clique_size,
     bins=None,
@@ -71,39 +140,40 @@ def create_rw(
     label=None,
     plot=True,
     write=True,
+    n_jobs=-1,  # <-- new: number of parallel workers, -1 = use all CPUs
 ):
     """
     Generate a background distribution of average interaction scores
     using random walks.
     """
-    
 
-    # prepare bins and label
     if bins is None:
         bins = np.arange(contact_matrix.shape[0])
     if label is None:
         label = 'all'
 
-    # prepare output directory
-    output_dir = os.path.join(os.getcwd(), 'background_models', 'random_walk')
+    output_dir = 'background_models/random_walk'
     os.makedirs(output_dir, exist_ok=True)
 
-    # sample
-    scores = []
-    for _ in tqdm(range(num_iterations), desc="Random walks", unit="iter"):
+    def single_random_walk():
         seed = np.random.choice(bins)
         clique = random_walk(
             contact_matrix,
             seed,
             clique_size,
-            neighbors= neighbors,
+            neighbors=neighbors,
             cdfs=cdfs,
             num_molecules=num_molecules,
             alpha=alpha
         )
-        scores.append(calculate_avg_interaction_strength(contact_matrix, clique))
+        return calculate_avg_interaction_strength(contact_matrix, clique)
 
-    # plot
+    # Run random walks in parallel
+    scores = Parallel(n_jobs=n_jobs)(
+        delayed(single_random_walk)() for _ in tqdm(range(num_iterations), desc="Random walks", unit="iter")
+    )
+    scores = np.array(scores)
+
     if plot:
         plt.figure(figsize=(10, 6))
         plt.hist(scores, bins=50, edgecolor='black')
@@ -111,17 +181,14 @@ def create_rw(
         plt.ylabel('Frequency')
         plt.title(
             f'Distribution of AIS ({label}) — '
-            f'{num_molecules} walks of length {clique_size} '
+            f'{num_molecules} walks of length {clique_size}'
         )
         plt.tight_layout()
         plt.show()
 
     if write:
-        fname = f'rw_scores_{n}_molecules_{num_molecules}_iters_{num_iterations}_alpha_{alpha}_{label}.txt'
+        fname = f'rw_scores_{clique_size}_molecules_{num_molecules}_iters_{num_iterations}_alpha_{alpha}_{label}.txt'
         path = os.path.join(output_dir, fname)
-        with open(path, 'w') as fh:
-            for s in scores:
-                fh.write(f"{s}\n")
+        np.savetxt(path, scores, fmt='%.6f')
 
     return scores
-

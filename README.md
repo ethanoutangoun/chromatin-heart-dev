@@ -57,7 +57,7 @@ conda activate chromatin38
 Run Jupyter Server
 
 ```bash
-jupyter notebook --no-browser --port=8888 --ip=0.0.0.0
+jupyter lab --no-browser --port=8888 --ip=0.0.0.0
 ```
 
 ### Terminal B - Tunnel from Laptop

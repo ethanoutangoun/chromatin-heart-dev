@@ -10,9 +10,9 @@ from .stats import calculate_avg_interaction_strength
 def create_greedy(
     contact_matrix,
     clique_size,
+    num_iterations=10000,
     bins=None,
     label=None,
-    num_iterations=1000,
     display=True,
     write=True,
 ):

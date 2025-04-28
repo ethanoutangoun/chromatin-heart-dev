@@ -73,3 +73,31 @@ def random_walk(contact_matrix, start_node, n,
 
     # top-n visited
     return np.argsort(visit_count)[-n:][::-1]
+
+def analytical_diffusion_clique(contact_matrix: np.ndarray,
+                                start_node: int,
+                                n: int,
+                                alpha: float = 0.1):
+
+    N = contact_matrix.shape[0]
+
+    # 1) Build the row‑stochastic transition matrix P
+    P = np.zeros((N, N), dtype=float)
+    row_sums = contact_matrix.sum(axis=1)
+    for i in range(N):
+        if row_sums[i] > 0:
+            P[i, :] = contact_matrix[i, :] / row_sums[i]
+        else:
+            # no neighbors → self‑loop
+            P[i, i] = 1.0
+
+    # 2) Form the fundamental matrix: F = (I - (1-alpha)*P)^(-1)
+    I = np.eye(N)
+    F = np.linalg.inv(I - (1 - alpha) * P)
+
+    # 3) Extract the expected visits for a start at `start_node`
+    visits = F[start_node, :]
+
+    # 4) Pick the top‑n nodes by descending visits
+    clique = np.argsort(visits)[-n:][::-1]
+    return clique, visits

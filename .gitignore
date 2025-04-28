@@ -4,6 +4,5 @@
 __pycache__
 data/gencode.v38.annotation.gtf    
 kaggle.json
-ttn_super_bin_contacts.npy
 .ipynb_checkpoints
-data/mappings/gencode.v38.annotation.gtf
+*gencode.v38.annotation.gtf

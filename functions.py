@@ -500,6 +500,9 @@ def load_bin_map_loc(file_path):
 
     return bin_dict
 
+
+
+
 import bisect
 
 def find_bin(chromosome, position, bin_dict):
@@ -515,7 +518,32 @@ def find_bin(chromosome, position, bin_dict):
     return None  # Position not found in any range
 
 
+def get_bins_on_gene(bin_map, gtf_file_path):   
+    gtf_cols = ["chrom", "source", "feature", "start", "end", "score", "strand", "frame", "attribute"]
+    gtf_df = pd.read_csv(gtf_file_path, sep="\t", comment="#", header=None, names=gtf_cols)
+    genes_df = gtf_df[gtf_df["feature"] == "gene"]
 
+    bins_on_genes = set()
+
+    for _, row in genes_df.iterrows():
+        gene_start = row["start"]
+        gene_chrom = row["chrom"]
+
+        bin = find_bin(gene_chrom, gene_start, bin_map)    
+        if bin is not None:
+            bins_on_genes.add(bin)
+
+    return list(bins_on_genes)
+
+def get_bins_not_on_gene(gene_bins, num_bins):   
+    gene_bins = [int(x) for x in gene_bins]
+
+    # All bins [0 to 30894]
+    all_bins = set(range(0, num_bins))
+    bins_not_on_genes = all_bins - set(gene_bins)
+
+
+    return list(bins_not_on_genes)
 
 # Helpers for generating and visualizing graphs
 def generate_sample_matrix_bins(n_bins):

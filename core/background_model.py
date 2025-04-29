@@ -121,41 +121,20 @@ def create_rw(
     return scores
 
 
-
-import os
 import numpy as np
-from tqdm import tqdm
+import os
 import matplotlib.pyplot as plt
-from joblib import Parallel, delayed
+from tqdm import tqdm
+import multiprocessing as mp
 
-def create_rw_parallel(
-    contact_matrix,
-    clique_size,
-    bins=None,
-    neighbors=None,
-    cdfs=None,
-    num_molecules=100,
-    num_iterations=1000,
-    alpha=0.05,
-    label=None,
-    plot=True,
-    write=True,
-    n_jobs=-1,  # <-- new: number of parallel workers, -1 = use all CPUs
-):
-    """
-    Generate a background distribution of average interaction scores
-    using random walks.
-    """
+def random_walk_batch(args):
+    (
+        contact_matrix, bins, clique_size,
+        neighbors, cdfs, num_molecules, alpha, batch_size
+    ) = args
 
-    if bins is None:
-        bins = np.arange(contact_matrix.shape[0])
-    if label is None:
-        label = 'all'
-
-    output_dir = 'background_models/random_walk'
-    os.makedirs(output_dir, exist_ok=True)
-
-    def single_random_walk():
+    batch_scores = np.empty(batch_size)
+    for i in range(batch_size):
         seed = np.random.choice(bins)
         clique = random_walk(
             contact_matrix,
@@ -166,13 +145,52 @@ def create_rw_parallel(
             num_molecules=num_molecules,
             alpha=alpha
         )
-        return calculate_avg_interaction_strength(contact_matrix, clique)
+        batch_scores[i] = calculate_avg_interaction_strength(contact_matrix, clique)
 
-    # Run random walks in parallel
-    scores = Parallel(n_jobs=n_jobs)(
-        delayed(single_random_walk)() for _ in tqdm(range(num_iterations), desc="Random walks", unit="iter")
-    )
-    scores = np.array(scores)
+    return batch_scores
+
+def create_rw_multiprocessing_batched(
+    contact_matrix,
+    clique_size,
+    num_iterations=1000,
+    bins=None,
+    neighbors=None,
+    cdfs=None,
+    num_molecules=1000,
+    alpha=0.05,
+    label=None,
+    plot=True,
+    write=True,
+    num_workers=None,
+    batch_size=100,
+):
+    if bins is None:
+        bins = np.arange(contact_matrix.shape[0])
+    if label is None:
+        label = 'all'
+    if num_workers is None:
+        num_workers = mp.cpu_count()
+
+    output_dir = 'background_models/random_walk'
+    os.makedirs(output_dir, exist_ok=True)
+
+    static_args = (contact_matrix, bins, clique_size, neighbors, cdfs, num_molecules, alpha, batch_size)
+
+    # Number of batches needed
+    num_batches = (num_iterations + batch_size - 1) // batch_size
+
+    with mp.Pool(processes=num_workers) as pool:
+        results = list(
+            tqdm(
+                pool.imap(random_walk_batch, [static_args] * num_batches),
+                total=num_batches,
+                desc="Random walks",
+                unit="batch"
+            )
+        )
+
+    # Flatten results
+    scores = np.concatenate(results)[:num_iterations]  # in case extra walks at the end
 
     if plot:
         plt.figure(figsize=(10, 6))

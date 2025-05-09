@@ -34,7 +34,7 @@ def main():
     )
     parser.add_argument(
         "--bin-map",
-        default="data/mappings/bin_map_human_100000.bed",
+        default="mappings/bin_map_human_100000.bed",
         help="Path to the bin map BED file (default: data/bin_map_human_100000.bed)"
     )
     parser.add_argument(

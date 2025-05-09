@@ -149,6 +149,18 @@ def random_walk_batch(args):
 
     return batch_scores
 
+import os
+import numpy as np
+import matplotlib.pyplot as plt
+from tqdm import tqdm
+from multiprocessing import Pool, cpu_count
+
+# Prevent thread overuse from NumPy, BLAS, MKL
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
+
 def create_rw_multiprocessing_batched(
     contact_matrix,
     clique_size,
@@ -164,6 +176,45 @@ def create_rw_multiprocessing_batched(
     num_workers=None,
     batch_size=100,
 ):
+    if bins is None:
+        bins = np.arange(contact_matrix.shape[0])
+    if label is None:
+        label = 'all'
+    if num_workers is None:
+        num_workers = min(cpu_count(), 4)  # or match SLURM_CPUS_PER_TASK
+
+    output_dir = 'background_models/random_walk'
+    os.makedirs(output_dir, exist_ok=True)
+
+    total_batches = (num_iterations + batch_size - 1) // batch_size
+    args = [
+        (
+            contact_matrix, bins, clique_size,
+            neighbors, cdfs, num_molecules, alpha, batch_size
+        )
+        for _ in range(total_batches)
+    ]
+
+    with Pool(processes=num_workers) as pool:
+        results = list(tqdm(pool.imap(random_walk_batch, args), total=total_batches))
+
+    scores = np.concatenate(results)[:num_iterations]
+
+    if plot:
+        plt.figure(figsize=(10, 6))
+        plt.hist(scores, bins=50, edgecolor='black')
+        plt.xlabel('Average Interaction Score')
+        plt.ylabel('Frequency')
+        plt.title(f'Distribution of AIS ({label}) — {num_molecules} walks')
+        plt.tight_layout()
+        plt.show()
+
+    if write:
+        fname = f'rw_scores_{clique_size}_molecules_{num_molecules}_iters_{num_iterations}_alpha_{alpha}_{label}.txt'
+        path = os.path.join(output_dir, fname)
+        np.savetxt(path, scores, fmt='%.6f')
+
+    return scores
     if bins is None:
         bins = np.arange(contact_matrix.shape[0])
     if label is None:

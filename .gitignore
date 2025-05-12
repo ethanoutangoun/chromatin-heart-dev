@@ -2,6 +2,7 @@
 .DS_Store
 /samples
 /data/hic
+/data/mcool
 __pycache__
 data/gencode.v38.annotation.gtf    
 kaggle.json

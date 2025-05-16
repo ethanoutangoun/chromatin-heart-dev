@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# To be ran from the command line on local machine
+# To be run from the command line on a local machine, without assuming a specific resolution
 
 import os
 import argparse
@@ -34,8 +34,8 @@ def main():
     )
     parser.add_argument(
         "--bin-map",
-        default="mappings/bin_map_human_100000.bed",
-        help="Path to the bin map BED file (default: data/bin_map_human_100000.bed)"
+        required=True,
+        help="Path to the bin map BED file (no default resolution assumed)"
     )
     parser.add_argument(
         "--output-dir",

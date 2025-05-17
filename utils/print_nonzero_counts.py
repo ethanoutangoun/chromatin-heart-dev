@@ -13,7 +13,7 @@ parser.add_argument("--label1", default="Matrix 1", help="Label for matrix1")
 args = parser.parse_args()
 
 # Load matrices
-logging.info(f"Loading {args.label1}...")
+logging.info(f"Loading {args.m}...")
 # Load matrix
 mat1 = np.load(args.m)
 

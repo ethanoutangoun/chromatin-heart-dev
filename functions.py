@@ -9,9 +9,6 @@ import os
 
 
 
-
-
-
 def simple_p_test(observed_score, random_scores):
     return np.mean(random_scores >= observed_score)
 
@@ -125,6 +122,54 @@ def find_ttn_bin(gtf_file_path, node_bed_path):
         return None
     
     return overlapping_bins["bin"].tolist()
+
+import pandas as pd
+
+def get_ttn_locus(gtf_file_path):
+    """
+    Parse a GENCODE GTF, find the TTN gene, and return its genomic locus.
+
+    Parameters
+    ----------
+    gtf_file_path : str
+        Path to the GENCODE GTF file.
+
+    Returns
+    -------
+    dict
+        {"chrom": str, "start": int, "end": int} for TTN, or None if not found.
+    """
+    # Load only gene lines
+    gtf_cols = [
+        "chrom", "source", "feature", "start", "end",
+        "score", "strand", "frame", "attribute"
+    ]
+    gtf = pd.read_csv(
+        gtf_file_path,
+        sep="\t",
+        comment="#",
+        header=None,
+        names=gtf_cols,
+        usecols=["chrom", "feature", "start", "end", "attribute"]
+    )
+
+    # Keep only gene features
+    genes = gtf[gtf["feature"] == "gene"]
+
+    # Find TTN by gene_name
+    is_ttn = genes["attribute"].str.contains(r'gene_name "TTN"')
+    if not is_ttn.any():
+        print("TTN gene not found in the GTF file.")
+        return None
+
+    # If multiple entries, take the first
+    rec = genes[is_ttn].iloc[0]
+    return {
+        "chrom": rec["chrom"],
+        "start": int(rec["start"]),
+        "end":   int(rec["end"])
+    }
+
 
 
 def load_bin_map(file_path):

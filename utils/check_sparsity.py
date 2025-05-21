@@ -25,8 +25,8 @@ def main():
     logging.info(f"Loading matrix from {args.matrix}...")
     matrix = np.load(args.matrix)
 
-    sparsity = np.count_nonzero(matrix) / matrix.size
-    print(f"{args.label}: {sparsity:.2%} sparsity")
+    density = np.count_nonzero(matrix) / matrix.size    
+    print(f"{args.label} density: {density:.4%}")
 
 if __name__ == "__main__":
     main()

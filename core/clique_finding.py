@@ -86,3 +86,26 @@ def analytical_diffusion_clique(contact_matrix: np.ndarray,
     # 4) Pick the top‑n nodes by descending visits
     clique = np.argsort(visits)[-n:][::-1]
     return clique, visits
+
+
+def all_analytical_diffusions(contact_matrix: np.ndarray, alpha: float = 0.1, output_prefix=False):
+    N = contact_matrix.shape[0]
+
+    # Build row-stochastic transition matrix P
+    P = np.zeros((N, N), dtype=float)
+    row_sums = contact_matrix.sum(axis=1)
+    for i in range(N):
+        if row_sums[i] > 0:
+            P[i, :] = contact_matrix[i, :] / row_sums[i]
+        else:
+            P[i, i] = 1.0  # Self-loop for isolated nodes
+
+    # Fundamental matrix: F = (I - (1-alpha)*P)^(-1)
+    I = np.eye(N)
+    F = np.linalg.inv(I - (1 - alpha) * P)
+
+
+    if output_prefix:
+        np.save(f'${output_prefix}.npy', F)
+
+    return F  # Each row F[i] is the expected visit distribution starting from node i

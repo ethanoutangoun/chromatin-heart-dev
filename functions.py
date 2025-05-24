@@ -96,6 +96,16 @@ def find_gene_from_bin(bin_id, node_bed_path, gtf_file_path):
 
     return list(gene_abbrevs)
 
+def get_genes_from_bins(bin_ids, bin_map_path, gtf_file_path):
+    GENE_SET = set()
+    for bin in tqdm(bin_ids, desc="Finding genes from bins"):
+        genes = find_gene_from_bin(bin, bin_map_path, gtf_file_path)
+        if genes:
+            GENE_SET.update(genes)
+
+    return list(GENE_SET)
+        
+
 
 
 def find_ttn_bin(gtf_file_path, node_bed_path):
@@ -301,3 +311,97 @@ def generate_sample_matrix_bins(n_bins):
     np.fill_diagonal(contact_matrix, 0)
 
     return contact_matrix
+
+
+import core.clique_finding as cf
+def optimize_clique_size(
+    contact_matrix,
+    max_clique_size,
+    seed_bin,
+    num_samples=1000,
+    clique_alg=cf.find_greedy_clique,
+    **alg_kwargs
+):
+    """
+    Runs a single full-size clique search with `clique_alg`, then trims down to all sizes.
+
+    Parameters:
+    - contact_matrix: Hi-C contact matrix
+    - max_clique_size: maximum clique size to search
+    - seed_bin: start bin for your TTN clique
+    - num_samples: number of random background samples
+    - clique_alg: function(contact_matrix, size, seed_bin, **alg_kwargs)
+    - alg_kwargs: extra keyword arguments for `clique_alg` (e.g. num_neighbors)
+
+    Returns:
+    sizes, ttn_scores, p_values, fold_changes, bg_dists
+    """
+    print(f"Starting optimize_clique_size: max_clique_size={max_clique_size}, "
+          f"seed_bin={seed_bin}, num_samples={num_samples}, alg={clique_alg.__name__}")
+
+    # 1) Full-size TTN clique
+    ttn_full = clique_alg(
+        contact_matrix,
+        max_clique_size,
+        seed_bin,
+        **alg_kwargs
+    )
+    print(f"Computed TTN full clique of size {len(ttn_full)} using {clique_alg.__name__}")
+
+    # 2) Background samples (full size)
+    bg_full = []
+    for _ in tqdm(range(num_samples), desc="Sampling background cliques"):
+        rand_bin = np.random.randint(contact_matrix.shape[0])
+        bg = clique_alg(
+            contact_matrix,
+            max_clique_size,
+            rand_bin,
+            **alg_kwargs
+        )
+        bg_full.append(bg)
+    print("Background sampling complete.")
+
+    sizes = list(range(1, max_clique_size + 1))
+    ttn_scores, p_values, fold_changes = [], [], []
+    bg_dists = {}
+
+    # 3) Trim & score for each size
+    for size in tqdm(sizes, desc="Processing sizes"):
+
+        # TTN subclique
+        ttn_sub = ttn_full[:size]
+        ttn_score = core.stats.calculate_avg_interaction_strength(
+            contact_matrix,
+            ttn_sub
+        )
+ 
+
+        # Background scores
+        bg_scores = []
+        for clique in bg_full:
+            sub = clique[:size]
+            score = core.stats.calculate_avg_interaction_strength(
+                contact_matrix,
+                sub
+            )
+            bg_scores.append(score)
+        bg_dists[size] = bg_scores
+
+        # Stats
+        median_bg = np.median(bg_scores)
+        pval = (np.sum(np.array(bg_scores) >= ttn_score) + 1) / (num_samples + 1)
+        fold = ttn_score / median_bg if median_bg != 0 else float('nan')
+
+        # print(f"  Median background: {median_bg:.4f}")
+        # print(f"  p-value: {pval:.4f}")
+        # print(f"  Fold change: {fold:.4f}")
+
+        ttn_scores.append(ttn_score)
+        p_values.append(pval)
+        fold_changes.append(fold)
+
+    print("Completed optimize_clique_size")
+    return sizes, ttn_scores, p_values, fold_changes, bg_dists
+
+
+

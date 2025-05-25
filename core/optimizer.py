@@ -45,7 +45,11 @@ def optimize_diffusion_params(contact_matrix, seed_bin, k_range=(5, 50), alpha_b
 
         # Compute p-value
         bg_scores = np.array(bg_scores)
-        pval = (np.sum(bg_scores >= ttn_score) + 1) / (len(bg_scores) + 1)
+        pval = core.stats.empirical_p_value(ttn_score, bg_scores)
+        fold_change = ttn_score / (np.median(bg_scores) + 1e-10)
+
+        # Save fold change in trial's user attributes
+        trial.set_user_attr("fold_change", fold_change)
         return pval
 
     study = optuna.create_study(direction="minimize")
@@ -73,7 +77,7 @@ def optimize_diffusion_params(contact_matrix, seed_bin, k_range=(5, 50), alpha_b
     # Retrieve top 5 trials by lowest p-value
     all_trials = sorted(study.trials, key=lambda t: t.value if t.value is not None else np.inf)
     trial_history = [
-        {"alpha": t.params["alpha"], "k": t.params["k"], "pval": t.value}
+        {"alpha": t.params["alpha"], "k": t.params["k"], "pval": t.value, "fold_change": t.user_attrs.get("fold_change", None)}
         for t in all_trials
     ]
 
@@ -81,6 +85,17 @@ def optimize_diffusion_params(contact_matrix, seed_bin, k_range=(5, 50), alpha_b
     trial_df = pd.DataFrame(trial_history)
     trial_df.to_csv("diffusion_trial_history.csv", index=False)
     return best_alpha, best_k, best_clique, final_pval, trial_history
+
+
+
+
+
+
+
+
+
+
+
 
 
 # Given a fixed alpha, # optimize the clique size k for a given seed bin

@@ -1,6 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
+import seaborn as sns
+
 
 def plot_clique_size_optimization(sizes, p_values):
     """
@@ -79,3 +81,48 @@ def plot_pval_heatmap(csv_path):
     plt.grid(False)
     plt.tight_layout()
     plt.show()
+
+
+
+
+
+
+
+
+
+def plot_pval_heatmap_from_trials(trial_df, alpha_precision=2):
+    """
+    Plot a heatmap of p-values over (alpha, k) combinations from an Optuna trial dataframe.
+    """
+    # Round alphas for better heatmap grouping
+    trial_df['alpha_rounded'] = trial_df['alpha'].round(alpha_precision)
+
+    # Pivot the table to have alpha as rows and k as columns
+    heatmap_data = trial_df.pivot_table(
+        index='alpha_rounded',
+        columns='k',
+        values='pval',
+        aggfunc='min'  # or 'mean' if you want average over duplicates
+    )
+
+    # Sort alpha axis from low to high
+    heatmap_data.sort_index(ascending=True, inplace=True)
+
+    # Plot
+    plt.figure(figsize=(14, 6))
+    sns.heatmap(
+        heatmap_data,
+        cmap="viridis_r",
+        annot=True,
+        fmt=".2f",
+        linewidths=0.5,
+        cbar_kws={"label": "p-value"}
+    )
+    plt.title("P-value Heatmap by α and k")
+    plt.xlabel("Clique size (k)")
+    plt.ylabel("Restart probability (α)")
+    plt.tight_layout()
+    plt.show()
+
+
+

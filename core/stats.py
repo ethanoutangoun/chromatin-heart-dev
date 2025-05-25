@@ -1,4 +1,5 @@
 from scipy import stats
+import numpy as np
 
 def calculate_avg_interaction_strength(contact_matrix, clique):
     total_interaction_strength = 0
@@ -23,6 +24,7 @@ def t_test(observed_score, score_list):
 
 
 def empirical_p_value(observed_score, random_scores):
-    count = sum(score >= observed_score for score in random_scores)
-    p_value = count / len(random_scores)
-    return p_value
+    random_scores = np.asarray(random_scores)
+    n = len(random_scores)
+    count = np.sum(random_scores >= observed_score)
+    return (count + 1) / (n + 1)

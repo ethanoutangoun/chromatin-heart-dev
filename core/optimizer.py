@@ -7,7 +7,7 @@ from tqdm import tqdm
 import pandas as pd
 
 # Optimize diffusion parameters (alpha and k) for clique finding in a contact matrix using Optuna.
-def optimize_diffusion_params(contact_matrix, seed_bin, k_range=(5, 50), alpha_bounds=(0.01, 0.95), n_trials=50):
+def optimize_diffusion_params(contact_matrix, seed_bin, k_range=(5, 50), alpha_bounds=(0.01, 0.95), n_trials=50, timeout_minutes=120):
     N = contact_matrix.shape[0]
 
     # Build row-stochastic transition matrix P once
@@ -49,7 +49,7 @@ def optimize_diffusion_params(contact_matrix, seed_bin, k_range=(5, 50), alpha_b
         return pval
 
     study = optuna.create_study(direction="minimize")
-    study.optimize(objective, n_trials=n_trials)
+    study.optimize(objective, n_trials=n_trials, timeout=timeout_minutes * 60)
 
     best_alpha = study.best_params['alpha']
     best_k = study.best_params['k']
@@ -69,7 +69,18 @@ def optimize_diffusion_params(contact_matrix, seed_bin, k_range=(5, 50), alpha_b
         final_bg_scores.append(score)
     final_pval = (np.sum(np.array(final_bg_scores) >= best_score) + 1) / (len(final_bg_scores) + 1)
 
-    return best_alpha, best_k, best_clique, final_pval
+
+    # Retrieve top 5 trials by lowest p-value
+    all_trials = sorted(study.trials, key=lambda t: t.value if t.value is not None else np.inf)
+    trial_history = [
+        {"alpha": t.params["alpha"], "k": t.params["k"], "pval": t.value}
+        for t in all_trials
+    ]
+
+    # save as DataFrame
+    trial_df = pd.DataFrame(trial_history)
+    trial_df.to_csv("diffusion_trial_history.csv", index=False)
+    return best_alpha, best_k, best_clique, final_pval, trial_history
 
 
 # Given a fixed alpha, # optimize the clique size k for a given seed bin

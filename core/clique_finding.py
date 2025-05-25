@@ -106,6 +106,6 @@ def all_analytical_diffusions(contact_matrix: np.ndarray, alpha: float = 0.1, ou
 
 
     if output_prefix:
-        np.save(f'${output_prefix}.npy', F)
+        np.save(f'{output_prefix}.npy', F)
 
     return F  # Each row F[i] is the expected visit distribution starting from node i

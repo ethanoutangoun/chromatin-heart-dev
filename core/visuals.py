@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
-
+import matplotlib.colors as mcolors
 
 def plot_clique_size_optimization(sizes, p_values):
     """
@@ -37,57 +37,48 @@ def plot_clique_size_optimization(sizes, p_values):
 
 
 
-def plot_pval_heatmap(csv_path):
-    # Load and preprocess data
+
+def plot_pval_heatmap_from_log(csv_path: str, alpha_precision: int = 3):
     df = pd.read_csv(csv_path)
-    df.set_index('alpha', inplace=True)
+    df["alpha_rounded"] = df["alpha"].round(alpha_precision)
 
-    # Compute log10 of p-values (clip to avoid log(0))
-    log_df = np.log10(df.clip(lower=1e-300))
+    heatmap_data = df.pivot_table(
+        index="alpha_rounded",
+        columns="k",
+        values="pval",
+        aggfunc="min"
+    )
+    heatmap_data.sort_index(ascending=True, inplace=True)
 
-    # Find minimum p-value and its coordinates
-    min_val = df.min().min()
-    min_alpha, min_size = None, None
-    for alpha in df.index:
-        for size in df.columns:
-            if df.loc[alpha, size] == min_val:
-                min_alpha = alpha
-                min_size = int(size)
-                break
+    # Find min (alpha, k) pair
+    min_val = df["pval"].min()
+    best = df[df["pval"] == min_val].iloc[0]
+    best_alpha = round(best["alpha"], alpha_precision)
+    best_k = int(best["k"])
 
-    # Plot configuration
-    plt.figure(figsize=(10, 6))
-    im = plt.imshow(log_df.values, cmap="viridis_r", aspect='auto')
+    plt.figure(figsize=(16, 6))
+    ax = sns.heatmap(
+        heatmap_data,
+        cmap="viridis_r",
+        norm=mcolors.LogNorm(vmin=heatmap_data.min().min(), vmax=heatmap_data.max().max()),
+        annot=True,
+        fmt=".1e",
+        linewidths=0.4,
+        cbar_kws={"label": "p-value"},
+        annot_kws={"fontsize": 6}
+    )
+    plt.title("P-value Heatmap over (α, k) Grid", fontsize=14)
+    plt.xlabel("Clique size (k)", fontsize=12)
+    plt.ylabel("Restart probability (α)", fontsize=12)
 
-    # Axis ticks and labels
-    plt.xticks(ticks=np.arange(len(df.columns)), labels=df.columns, fontsize=10)
-    plt.yticks(ticks=np.arange(len(df.index)), labels=df.index, fontsize=10)
-    plt.xlabel("Clique Size ($k$)", fontsize=12)
-    plt.ylabel("Restart Probability ($\\alpha$)", fontsize=12)
-    plt.title("Log$_{10}$ P-values Across $\mathbf{\\alpha}$ and Clique Size", fontsize=14)
-
-    # Add colorbar
-    cbar = plt.colorbar(im)
-    cbar.set_label("log$_{10}$(p-value)", fontsize=12)
-    cbar.ax.tick_params(labelsize=10)
-
-    # Highlight minimum
-    plt.scatter(df.columns.get_loc(str(min_size)), df.index.get_loc(min_alpha),
-                color='red', edgecolor='black', zorder=10,
-                label=f"Minimum p-value:\nα = {min_alpha}, k = {min_size}\np = {min_val:.1e}")
-    plt.legend(loc="upper right", fontsize=10)
-
-    # Optional: Add grid for visual guidance
-    plt.grid(False)
+    # Highlight best cell
+    ax.scatter(
+        x=[heatmap_data.columns.get_loc(best_k) + 0.5],
+        y=[heatmap_data.index.get_loc(best_alpha) + 0.5],
+        s=100, color='red', edgecolors='black', linewidth=1.5
+    )
     plt.tight_layout()
     plt.show()
-
-
-
-
-
-
-
 
 
 def plot_pval_heatmap_from_trials(trial_df, alpha_precision=2):

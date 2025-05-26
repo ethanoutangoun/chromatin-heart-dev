@@ -537,6 +537,18 @@ def optimize_clique_size(
         p_values.append(pval)
         fold_changes.append(fold)
 
+    # save as df to csv
+    results_df = pd.DataFrame({
+        "size": sizes,
+        "ttn_score": ttn_scores,
+        "p_value": p_values,
+        "fold_change": fold_changes
+    })
+
+    results_df.to_csv(f"greedy_clique_size_optimization_results_seed_{seed_bin}.csv", index=False)
+
+
+
     print("Completed optimize_clique_size")
     return sizes, ttn_scores, p_values, fold_changes, bg_dists
 

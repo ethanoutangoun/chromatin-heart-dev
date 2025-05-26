@@ -117,3 +117,81 @@ def plot_pval_heatmap_from_trials(trial_df, alpha_precision=2):
 
 
 
+import math
+
+def plot_contact_matrix(
+    matrix: np.ndarray,
+    title: str,
+    max_bins: int = 5000,
+    vmin: float = 0,
+    vmax: float = 99,
+    genome_size_bp: int = 3_100_000_000,  
+    n_ticks: int = 5                  
+):
+
+    # --- (1) optionally aggregate large matrices ---
+    n_bins = matrix.shape[0]
+    if n_bins > max_bins:
+        factor = math.ceil(n_bins / max_bins)
+        new_n = math.ceil(n_bins / factor)
+        pad_amt = new_n * factor - n_bins
+        if pad_amt > 0:
+            matrix = np.pad(
+                matrix,
+                ((0, pad_amt), (0, pad_amt)),
+                mode='constant',
+                constant_values=np.nan
+            )
+        matrix = matrix.reshape(new_n, factor, new_n, factor).mean(axis=(1,3))
+        n_bins = new_n
+
+    # --- (2) color scale ceiling at the given percentile ---
+    vmax_val = np.nanpercentile(matrix, vmax)
+
+    # --- (3) compute resolution (bp per bin) and tick positions/labels ---
+    bp_per_bin = genome_size_bp / n_bins
+    # tick positions in bin indices
+    tick_bins = np.linspace(0, n_bins, num=n_ticks, endpoint=True)
+    # convert to Mb
+    tick_mbs = (tick_bins * bp_per_bin) / 1e6
+    # format labels as integers or one decimal
+    tick_labels = [f"{mb:.1f}" if mb < 10 else f"{int(mb)}" for mb in tick_mbs]
+
+    # --- (4) set global font modern ---
+    plt.rcParams.update({
+        'font.family': 'sans-serif',
+        'font.sans-serif': 'Arial',
+        'font.size': 10
+    })
+
+    # --- (5) plot matrix ---
+    fig, ax = plt.subplots(figsize=(8, 8))
+    cmap = plt.cm.Reds
+    cmap.set_bad(color='white')
+    im = ax.imshow(
+        matrix,
+        cmap=cmap,
+        interpolation='nearest',
+        vmin=vmin,
+        vmax=vmax_val,
+        aspect='equal'
+    )
+
+    # --- (6) title & axis labels ---
+    ax.set_title(title, fontsize=12)
+    ax.set_xlabel("Genomic position (Mb)", labelpad=8)
+    ax.set_ylabel("Genomic position (Mb)", labelpad=8)
+
+    # --- (7) set ticks ---
+    ax.set_xticks(tick_bins)
+    ax.set_xticklabels(tick_labels)
+    ax.set_yticks(tick_bins)
+    ax.set_yticklabels(tick_labels)
+
+    # --- (8) improved colorbar ---
+    cbar = fig.colorbar(im, ax=ax, fraction=0.026, pad=0.04)    
+    cbar.set_label("Interaction frequency", fontsize=10, labelpad=6)
+    cbar.ax.tick_params(labelsize=10)
+
+    plt.tight_layout()
+    plt.show()

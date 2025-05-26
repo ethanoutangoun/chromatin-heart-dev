@@ -457,6 +457,8 @@ def optimize_clique_size(
     seed_bin,
     num_samples=1000,
     clique_alg=cf.find_greedy_clique,
+    background_bins = None,
+    label=None,
     **alg_kwargs
 ):
     """
@@ -545,7 +547,11 @@ def optimize_clique_size(
         "fold_change": fold_changes
     })
 
-    results_df.to_csv(f"greedy_clique_size_optimization_results_seed_{seed_bin}.csv", index=False)
+
+    if label is None:
+        results_df.to_csv(f"greedy_clique_size_optimization_results_seed_{seed_bin}.csv", index=False)
+    else:
+        results_df.to_csv(f"greedy_clique_size_optimization_results_seed_{seed_bin}_{label}.csv", index=False)
 
 
 

@@ -30,9 +30,10 @@ with open('mappings/non_gene_bins.txt', 'r') as file:
 non_gene_bins = [int(x) for x in non_gene_bins]
 
 TTN_BIN = 4275
-TTN_BIN = 100
+# TTN_BIN = 100
 
+contact_matrix_zero = np.load('data/hic/wildtype_100kb_zeroed_no_chrY.npy')
 # contact_matrix_zero = np.load('data/hic/wt_100kb_balanced_zeroed_no_chrY.npy')
-contact_matrix_zero = f.generate_sample_matrix_bins(2000)
+# contact_matrix_zero = f.generate_sample_matrix_bins(2000)
 
-res = core.optimizer.optimize_diffusion_params_smart(contact_matrix_zero, TTN_BIN, (3,70), (0.01, 0.95), n_trials=1000, timeout_minutes=1)
+res = core.optimizer.optimize_diffusion_params_smart(contact_matrix_zero, TTN_BIN, (3,70), (0.01, 0.95), n_trials=1000, timeout_minutes=330)

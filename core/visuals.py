@@ -37,7 +37,145 @@ def plot_clique_size_optimization(sizes, p_values):
 
 
 
+# def plot_pval_contours_from_csv(csv_path: str, alpha_precision: int = 3):
+#     """
+#     Load a CSV containing alpha, k, and pval columns and produce a smooth contour plot
+#     showing log10(p-value) over the (alpha, k) parameter grid.
+#     """
+#     df = pd.read_csv(csv_path)
+#     df["alpha_rounded"] = df["alpha"].round(alpha_precision)
 
+#     # Pivot for plotting
+#     pval_mat = df.pivot_table(
+#         index="alpha_rounded",
+#         columns="k",
+#         values="pval",
+#         aggfunc="min"
+#     ).sort_index()
+
+#     # Prepare grid
+#     alpha_vals = pval_mat.index.values
+#     size_vals = pval_mat.columns.values
+#     AA, SS = np.meshgrid(alpha_vals, size_vals, indexing='ij')
+#     Z = np.log10(pval_mat.values)
+
+#     # Find the most significant point
+#     min_idx = np.unravel_index(np.nanargmin(Z), Z.shape)
+#     optimal_alpha = alpha_vals[min_idx[0]]
+#     optimal_k = size_vals[min_idx[1]]
+#     min_log_pval = Z[min_idx]
+#     actual_pval = 10 ** min_log_pval
+
+#     print(f"Most significant combination:")
+#     print(f"α = {optimal_alpha:.3f}, k = {optimal_k}, p-value = {actual_pval:.2e}")
+#     print(f"log₁₀(p-value) = {min_log_pval:.3f}")
+
+#     # Plot
+#     plt.figure(figsize=(10, 8))
+#     levels = np.linspace(np.nanmin(Z), np.nanmax(Z), 25)
+
+#     cp = plt.contourf(SS, AA, Z, levels=levels, cmap='viridis_r')
+#     plt.contour(SS, AA, Z, levels=10, colors='black', alpha=0.4, linewidths=0.5)
+
+#     plt.colorbar(cp, label='log₁₀(p-value)', shrink=0.8)
+
+#     plt.plot(optimal_k, optimal_alpha, 'o', color='red', markersize=8,
+#              markeredgecolor='black', markeredgewidth=1.5,
+#              label=f'Min: α={optimal_alpha:.3f}, k={optimal_k}')
+
+#     plt.xlabel('Clique size (k)', fontsize=12, fontweight='bold')
+#     plt.ylabel('Restart probability (α)', fontsize=12, fontweight='bold')
+#     plt.title('log₁₀(p-value) Parameter Optimization',
+#               fontsize=14, fontweight='bold', pad=20)
+
+#     plt.grid(True, alpha=0.3, linestyle='--')
+#     plt.legend(loc='upper right', fontsize=11, framealpha=0.9)
+
+#     plt.xlim(size_vals.min() - 0.5, size_vals.max() + 0.5)
+#     plt.ylim(alpha_vals.min() - 0.01, alpha_vals.max() + 0.01)
+
+#     textstr = f'Min p-value: {actual_pval:.2e}\nα={optimal_alpha:.3f}, k={optimal_k}'
+#     props = dict(boxstyle='round', facecolor='white', alpha=0.8)
+#     plt.text(0.02, 0.98, textstr, transform=plt.gca().transAxes, fontsize=10,
+#              verticalalignment='top', bbox=props)
+
+#     plt.tight_layout()
+#     plt.show()
+
+def plot_pval_contours_from_csv(csv_path: str, alpha_precision: int = 3, render_range: tuple = None):
+    """
+    Plot a contour map of log10(p-values) from a CSV with alpha, k, and pval columns.
+
+    Parameters:
+    - csv_path: Path to CSV file.
+    - alpha_precision: Rounding precision for alpha values.
+    - render_range: Optional tuple (k_min, k_max) to limit x-axis range.
+    """
+    df = pd.read_csv(csv_path)
+    df["alpha_rounded"] = df["alpha"].round(alpha_precision)
+
+    # Pivot to get matrix of p-values
+    pval_mat = df.pivot_table(
+        index="alpha_rounded",
+        columns="k",
+        values="pval",
+        aggfunc="min"
+    ).sort_index()
+
+    # Apply optional render range filter
+    if render_range is not None:
+        k_min, k_max = render_range
+        pval_mat = pval_mat.loc[:, (pval_mat.columns >= k_min) & (pval_mat.columns <= k_max)]
+
+    # Build grid
+    alpha_vals = pval_mat.index.values
+    size_vals = pval_mat.columns.values
+    AA, SS = np.meshgrid(alpha_vals, size_vals, indexing='ij')
+    Z = np.log10(pval_mat.values)
+
+    # Find min point
+    min_idx = np.unravel_index(np.nanargmin(Z), Z.shape)
+    optimal_alpha = alpha_vals[min_idx[0]]
+    optimal_k = size_vals[min_idx[1]]
+    min_log_pval = Z[min_idx]
+    actual_pval = 10 ** min_log_pval
+
+    print(f"Most significant combination:")
+    print(f"α = {optimal_alpha:.3f}, k = {optimal_k}, p-value = {actual_pval:.2e}")
+    print(f"log₁₀(p-value) = {min_log_pval:.3f}")
+
+    # Plot
+    plt.figure(figsize=(10, 8))
+    levels = np.linspace(np.nanmin(Z), np.nanmax(Z), 25)
+    cp = plt.contourf(SS, AA, Z, levels=levels, cmap='viridis_r')
+    plt.contour(SS, AA, Z, levels=10, colors='black', alpha=0.4, linewidths=0.5)
+
+    plt.colorbar(cp, label='log₁₀(p-value)', shrink=0.8)
+
+    plt.plot(optimal_k, optimal_alpha, 'o', color='red', markersize=8,
+             markeredgecolor='black', markeredgewidth=1.5,
+             label=f'Min: α={optimal_alpha:.3f}, k={optimal_k}')
+
+    plt.xlabel('Clique size (k)', fontsize=12, fontweight='bold')
+    plt.ylabel('Restart probability (α)', fontsize=12, fontweight='bold')
+    plt.title('log₁₀(p-value) Parameter Optimization',
+              fontsize=14, fontweight='bold', pad=20)
+
+    plt.grid(True, alpha=0.3, linestyle='--')
+    plt.legend(loc='upper right', fontsize=11, framealpha=0.9)
+
+    plt.xlim(size_vals.min() - 0.5, size_vals.max() + 0.5)
+    plt.ylim(alpha_vals.min() - 0.01, alpha_vals.max() + 0.01)
+
+    textstr = f'Min p-value: {actual_pval:.2e}\nα={optimal_alpha:.3f}, k={optimal_k}'
+    props = dict(boxstyle='round', facecolor='white', alpha=0.8)
+    plt.text(0.02, 0.98, textstr, transform=plt.gca().transAxes, fontsize=10,
+             verticalalignment='top', bbox=props)
+
+    plt.tight_layout()
+    plt.show()
+
+    
 def plot_pval_heatmap_from_log(csv_path: str, alpha_precision: int = 3):
     df = pd.read_csv(csv_path)
     df["alpha_rounded"] = df["alpha"].round(alpha_precision)

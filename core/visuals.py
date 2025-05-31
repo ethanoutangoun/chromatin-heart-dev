@@ -252,6 +252,55 @@ def plot_pval_heatmap_from_log(csv_path: str, alpha_precision: int = 3):
     plt.show()
 
 
+
+def plot_fold_change_heatmap_from_log(csv_path: str, alpha_precision: int = 3):
+    df = pd.read_csv(csv_path)
+    df["alpha_rounded"] = df["alpha"].round(alpha_precision)
+
+    # Ensure fold_enrichment column exists
+    if "fold_change" not in df.columns:
+        raise ValueError("CSV must contain a 'fold_change' column.")
+
+    heatmap_data = df.pivot_table(
+        index="alpha_rounded",
+        columns="k",
+        values="fold_change",
+        aggfunc="max"  # max enrichment is typically more interesting
+    )
+    heatmap_data.sort_index(ascending=True, inplace=True)
+
+    # Find max (alpha, k) pair
+    max_val = df["fold_change"].max()
+    best = df[df["fold_change"] == max_val].iloc[0]
+    best_alpha = round(best["alpha"], alpha_precision)
+    best_k = int(best["k"])
+
+    plt.figure(figsize=(16, 6))
+    ax = sns.heatmap(
+        heatmap_data,
+        cmap="YlOrRd",
+        norm=mcolors.LogNorm(vmin=max(1.0, heatmap_data.min().min()), vmax=heatmap_data.max().max()),
+        annot=True,
+        fmt=".2f",
+        linewidths=0.4,
+        cbar_kws={"label": "Fold Change"},
+        annot_kws={"fontsize": 6}
+    )
+    plt.title("Fold Change Heatmap over (α, k) Grid", fontsize=14)
+    plt.xlabel("Clique size (k)", fontsize=12)
+    plt.ylabel("Restart probability (α)", fontsize=12)
+
+    # Highlight best cell
+    ax.scatter(
+        x=[heatmap_data.columns.get_loc(best_k) + 0.5],
+        y=[heatmap_data.index.get_loc(best_alpha) + 0.5],
+        s=100, color='red', edgecolors='black', linewidth=1.5
+    )
+    plt.tight_layout()
+    plt.show()
+
+
+
 def plot_pval_heatmap_from_trials(trial_df, alpha_precision=2):
     """
     Plot a heatmap of p-values over (alpha, k) combinations from an Optuna trial dataframe.

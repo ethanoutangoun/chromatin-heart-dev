@@ -36,4 +36,4 @@ contact_matrix_zero = np.load('data/hic/wildtype_100kb_zeroed_no_chrY.npy')
 # contact_matrix_zero = np.load('data/hic/wt_100kb_balanced_zeroed_no_chrY.npy')
 # contact_matrix_zero = f.generate_sample_matrix_bins(2000)
 
-res = core.optimizer.optimize_diffusion_params_smart(contact_matrix_zero, TTN_BIN, (3,70), (0.01, 0.95), n_trials=1000, timeout_minutes=330)
+res = core.optimizer.optimize_diffusion_params_smart(contact_matrix_zero, TTN_BIN, (3,50), (0.05, 0.80), n_trials=1000, timeout_minutes=300)

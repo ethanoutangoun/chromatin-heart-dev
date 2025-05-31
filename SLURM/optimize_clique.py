@@ -32,7 +32,7 @@ non_gene_bins = [int(x) for x in non_gene_bins]
 TTN_BIN = 4275
 # TTN_BIN = 100
 
-contact_matrix_zero = np.load('data/hic/wildtype_100kb_zeroed_no_chrY.npy')
+contact_matrix_zero = np.load('data/hic/wildtype_100kb_zeroed.npy')
 # contact_matrix_zero = np.load('data/hic/wt_100kb_balanced_zeroed_no_chrY.npy')
 # contact_matrix_zero = f.generate_sample_matrix_bins(2000)
 

@@ -417,10 +417,18 @@ def optimize_clique_size(
     )
     print(f"Computed TTN full clique of size {len(ttn_full)} using {clique_alg.__name__}")
 
+    bg_set = []
+    if background_bins is None:
+        bg_set = [i for i in range(contact_matrix.shape[0]) if i != seed_bin]
+    else:
+        # ensure seed_bin isn't accidentally included
+        bg_set = [i for i in background_bins if i != seed_bin]
+
+
     # 2) Background samples (full size)
     bg_full = []
     for _ in tqdm(range(num_samples), desc="Sampling background cliques"):
-        rand_bin = np.random.randint(contact_matrix.shape[0])
+        rand_bin = np.random.choice(bg_set)
         bg = clique_alg(
             contact_matrix,
             max_clique_size,
@@ -461,9 +469,6 @@ def optimize_clique_size(
         pval = (np.sum(np.array(bg_scores) >= ttn_score) + 1) / (num_samples + 1)
         fold = ttn_score / median_bg if median_bg != 0 else float('nan')
 
-        # print(f"  Median background: {median_bg:.4f}")
-        # print(f"  p-value: {pval:.4f}")
-        # print(f"  Fold change: {fold:.4f}")
 
         ttn_scores.append(ttn_score)
         p_values.append(pval)

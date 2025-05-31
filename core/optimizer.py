@@ -5,6 +5,7 @@ import core.stats
 import core.clique_finding as cf
 from tqdm import tqdm
 import pandas as pd
+import os
 
 # Optimize diffusion parameters (alpha and k) for clique finding in a contact matrix using Optuna.
 def optimize_diffusion_params(contact_matrix, seed_bin, k_range=(5, 50), alpha_bounds=(0.01, 0.95), n_trials=50, timeout_minutes=120):
@@ -223,6 +224,9 @@ def optimize_diffusion_params_smart(
     """
     If background_bins is provided, only those bins (excluding seed_bin) will be
     used to compute the empirical p-value. Otherwise all other bins are used.
+
+    This version appends the results of each trial to `log_csv` immediately after
+    that trial finishes, so that a crash midway won't lose already‐completed trials.
     """
     N = contact_matrix.shape[0]
 
@@ -236,20 +240,24 @@ def optimize_diffusion_params_smart(
             P[i, i] = 1.0
     I = np.eye(N)
 
-    # If no background list is provided, default to all bins ≠ seed_bin
+    # Determine background list
     if background_bins is None:
         bg_list = [i for i in range(N) if i != seed_bin]
     else:
-        # ensure seed_bin isn't accidentally included
         bg_list = [i for i in background_bins if i != seed_bin]
 
     all_trials_log = []
     study = optuna.create_study(direction="minimize")
 
-    # Ensure alpha bounds are evaluated
+    # Ensure alpha bounds are evaluated first
     alpha_lower, alpha_upper = alpha_bounds
     study.enqueue_trial({"alpha": alpha_lower})
     study.enqueue_trial({"alpha": alpha_upper})
+
+    # If the CSV does not exist, write the header row first
+    if not os.path.isfile(log_csv):
+        header_df = pd.DataFrame(columns=["alpha", "k", "pval", "fold_change"])
+        header_df.to_csv(log_csv, index=False)
 
     def objective(trial):
         alpha = trial.suggest_float("alpha", *alpha_bounds)
@@ -260,11 +268,14 @@ def optimize_diffusion_params_smart(
         sorted_ranks = [np.argsort(F[i])[::-1] for i in range(N)]
 
         best_p = np.inf
+        # Collect rows just for this trial:
+        trial_log = []
+
         for k in tqdm(range(k_range[0], k_range[1] + 1), desc=f"α = {alpha:.3f}"):
             clique = sorted_ranks[seed_bin][:k]
             ttn_score = core.stats.calculate_avg_interaction_strength(contact_matrix, clique)
 
-            # Only use bg_list here
+            # Compute background scores
             bg_scores = [
                 core.stats.calculate_avg_interaction_strength(contact_matrix, sorted_ranks[i][:k])
                 for i in bg_list
@@ -274,25 +285,33 @@ def optimize_diffusion_params_smart(
             pval = core.stats.empirical_p_value(ttn_score, bg_scores)
             fold = ttn_score / (np.median(bg_scores) + 1e-10)
 
-            all_trials_log.append({
+            row = {
                 "alpha": alpha,
                 "k": k,
                 "pval": pval,
                 "fold_change": fold
-            })
+            }
+            trial_log.append(row)
+            all_trials_log.append(row)
+
             best_p = min(best_p, pval)
+
+        # After finishing all k values for this trial, append to CSV:
+        df_trial = pd.DataFrame(trial_log)
+        df_trial.to_csv(log_csv, mode="a", header=False, index=False)
 
         return best_p
 
+    # Run optimization (Optuna will call objective() repeatedly)
     study.optimize(objective, n_trials=n_trials, timeout=timeout_minutes * 60)
 
-    # Extract best params
+    # Once optimization is done, extract the best parameters & recompute final clique
     best_alpha = study.best_params["alpha"]
     A = I - (1 - best_alpha) * P
     F = np.linalg.inv(A)
     sorted_ranks = [np.argsort(F[i])[::-1] for i in range(N)]
 
-    # Find the best (alpha, k) record for final clique
+    # Find the best (alpha, k) record among all_trials_log for final clique
     best_entry = min(
         (r for r in all_trials_log if np.isclose(r["alpha"], best_alpha, atol=1e-6)),
         key=lambda r: r["pval"]
@@ -303,7 +322,8 @@ def optimize_diffusion_params_smart(
     final_pval = best_entry["pval"]
     final_fold = best_entry["fold_change"]
 
-    # Save full grid log
+    # As a final sanity check, overwrite the CSV with the full history 
+    # (optional—your individual trial‐by‐trial appends have already been saved)
     pd.DataFrame(all_trials_log).to_csv(log_csv, index=False)
 
     return {
@@ -314,8 +334,6 @@ def optimize_diffusion_params_smart(
         "final_fold": final_fold,
         "full_log": all_trials_log
     }
-
-
 
 
 

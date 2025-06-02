@@ -248,6 +248,27 @@ def build_walk_index(contact_matrix):
 
 import bisect
 
+def load_bin_map_loc(file_path):
+    bin_dict = {}
+    with open(file_path, 'r') as file:
+        for line in file:
+            parts = line.strip().split('\t')
+            if len(parts) == 4:
+                chromosome, start, end, bin_id = parts
+                start, end, bin_id = int(start), int(end), int(bin_id)
+
+                # Store bin_id for the entire range
+                if chromosome not in bin_dict:
+                    bin_dict[chromosome] = []
+                bin_dict[chromosome].append((start, end, bin_id))
+
+    # Sort ranges for faster querying
+    for chrom in bin_dict:
+        bin_dict[chrom].sort()
+
+    return bin_dict
+
+
 def find_bin(chromosome, position, bin_dict):
     if chromosome not in bin_dict:
         return None  # Chromosome not found

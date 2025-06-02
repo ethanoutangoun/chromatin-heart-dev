@@ -208,9 +208,16 @@ def plot_pval_contours_from_csv(csv_path: str, alpha_precision: int = 3, render_
     plt.tight_layout()
     plt.show()
 
-    
-def plot_pval_heatmap_from_log(csv_path: str, alpha_precision: int = 3):
+
+def plot_pval_heatmap_from_log(csv_path: str, alpha_precision: int = 3, alpha_range=None, k_range=None):
     df = pd.read_csv(csv_path)
+
+    # Optional filtering
+    if alpha_range is not None:
+        df = df[(df["alpha"] >= alpha_range[0]) & (df["alpha"] <= alpha_range[1])]
+    if k_range is not None:
+        df = df[(df["k"] >= k_range[0]) & (df["k"] <= k_range[1])]
+
     df["alpha_rounded"] = df["alpha"].round(alpha_precision)
 
     heatmap_data = df.pivot_table(
@@ -220,12 +227,6 @@ def plot_pval_heatmap_from_log(csv_path: str, alpha_precision: int = 3):
         aggfunc="min"
     )
     heatmap_data.sort_index(ascending=True, inplace=True)
-
-    # Find min (alpha, k) pair
-    min_val = df["pval"].min()
-    best = df[df["pval"] == min_val].iloc[0]
-    best_alpha = round(best["alpha"], alpha_precision)
-    best_k = int(best["k"])
 
     plt.figure(figsize=(16, 6))
     ax = sns.heatmap(
@@ -242,17 +243,9 @@ def plot_pval_heatmap_from_log(csv_path: str, alpha_precision: int = 3):
     plt.xlabel("Clique size (k)", fontsize=12)
     plt.ylabel("Restart probability (α)", fontsize=12)
 
-    # Highlight best cell
-    ax.scatter(
-        x=[heatmap_data.columns.get_loc(best_k) + 0.5],
-        y=[heatmap_data.index.get_loc(best_alpha) + 0.5],
-        s=100, color='red', edgecolors='black', linewidth=1.5
-    )
     plt.tight_layout()
     plt.show()
-
-
-
+    
 def plot_fold_change_heatmap_from_log(csv_path: str, alpha_precision: int = 3):
     df = pd.read_csv(csv_path)
     df["alpha_rounded"] = df["alpha"].round(alpha_precision)

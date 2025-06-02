@@ -82,6 +82,7 @@ def analytical_diffusion_clique(contact_matrix: np.ndarray,
 
     # 3) Extract the expected visits for a start at `start_node`
     visits = F[start_node, :]
+    
 
     # 4) Pick the top‑n nodes by descending visits
     clique = np.argsort(visits)[-n:][::-1]

@@ -556,21 +556,14 @@ def optimize_clique_size(
     """
     Runs a single full-size clique search with `clique_alg`, then trims down to all sizes.
 
-    Parameters:
-    - contact_matrix: Hi-C contact matrix
-    - max_clique_size: maximum clique size to search
-    - seed_bin: start bin for your TTN clique
-    - num_samples: number of random background samples
-    - clique_alg: function(contact_matrix, size, seed_bin, **alg_kwargs)
-    - alg_kwargs: extra keyword arguments for `clique_alg` (e.g. num_neighbors)
-
-    Returns:
-    sizes, ttn_scores, p_values, fold_changes, bg_dists
+    Changes from before:
+    - Always sample `num_samples` background bins WITH replacement.
+    - No longer caps at len(bg_set) for the number of draws.
     """
     print(f"Starting optimize_clique_size: max_clique_size={max_clique_size}, "
           f"seed_bin={seed_bin}, num_samples={num_samples}, alg={clique_alg.__name__}")
 
-    # 1) Full-size TTN clique
+    # 1) Compute the full TTN clique
     ttn_full = clique_alg(
         contact_matrix,
         max_clique_size,
@@ -579,62 +572,61 @@ def optimize_clique_size(
     )
     print(f"Computed TTN full clique of size {len(ttn_full)} using {clique_alg.__name__}")
 
+    # 2) Build the background‐bin set (excluding seed_bin)
     if background_bins is None:
         bg_set = [i for i in range(contact_matrix.shape[0]) if i != seed_bin]
     else:
-        # ensure seed_bin isn't accidentally included
         bg_set = [i for i in background_bins if i != seed_bin]
 
-    # 2) Background samples (full size) without replacement
-    actual_samples = min(num_samples, len(bg_set))
-    shuffled_bg = np.random.permutation(bg_set)[:actual_samples]
+    if len(bg_set) == 0:
+        raise ValueError("No valid background bins remain after excluding the seed.")
 
+    # 3) Sample num_samples background bins WITH replacement
+    sampled_bg_bins = np.random.choice(bg_set, size=num_samples, replace=True)
+
+    # 4) For each sampled bin, compute its full clique
     bg_full = []
-    for rand_bin in tqdm(shuffled_bg, desc="Sampling background cliques"):
-        bg = clique_alg(
+    for rand_bin in tqdm(sampled_bg_bins, desc="Sampling background cliques"):
+        bg_clique = clique_alg(
             contact_matrix,
             max_clique_size,
             rand_bin,
             **alg_kwargs
         )
-        bg_full.append(bg)
+        bg_full.append(bg_clique)
     print("Background sampling complete.")
 
-    sizes = list(range(1, max_clique_size + 1))
-    ttn_scores, p_values, fold_changes = [], [], []
-    bg_dists = {}
+    # 5) Now trim each clique down to sizes 1..max_clique_size and compute stats
+    sizes        = list(range(1, max_clique_size + 1))
+    ttn_scores   = []
+    p_values     = []
+    fold_changes = []
+    bg_dists     = {}
 
-    # 3) Trim & score for each size
     for size in tqdm(sizes, desc="Processing sizes"):
+        # 5a) TTN subclique of this size
+        ttn_sub    = ttn_full[:size]
+        ttn_score  = core.stats.calculate_avg_interaction_strength(contact_matrix, ttn_sub)
 
-        # TTN subclique
-        ttn_sub = ttn_full[:size]
-        ttn_score = core.stats.calculate_avg_interaction_strength(
-            contact_matrix,
-            ttn_sub
-        )
-
-        # Background scores
+        # 5b) Background scores for this size
         bg_scores = []
         for clique in bg_full:
-            sub = clique[:size]
-            score = core.stats.calculate_avg_interaction_strength(
-                contact_matrix,
-                sub
-            )
+            sub    = clique[:size]
+            score  = core.stats.calculate_avg_interaction_strength(contact_matrix, sub)
             bg_scores.append(score)
         bg_dists[size] = bg_scores
 
-        # Stats
+        # 5c) Compute p-value and fold-change
         median_bg = np.median(bg_scores)
+        # +1 numerator and denominator for a pseudo‐count (to avoid zero‐division / zero‐p‐value)
         pval = (np.sum(np.array(bg_scores) >= ttn_score) + 1) / (num_samples + 1)
-        fold = ttn_score / median_bg if median_bg != 0 else float('nan')
+        fold = (ttn_score / median_bg) if (median_bg != 0) else float('nan')
 
         ttn_scores.append(ttn_score)
         p_values.append(pval)
         fold_changes.append(fold)
 
-    # save as df to csv
+    # 6) Save to CSV
     results_df = pd.DataFrame({
         "size": sizes,
         "ttn_score": ttn_scores,
@@ -643,13 +635,13 @@ def optimize_clique_size(
     })
 
     if label is None:
-        results_df.to_csv(f"greedy_clique_size_optimization_results_seed_{seed_bin}.csv", index=False)
+        fname = f"greedy_clique_size_optimization_results_seed_{seed_bin}.csv"
     else:
-        results_df.to_csv(f"greedy_clique_size_optimization_results_seed_{seed_bin}_{label}.csv", index=False)
+        fname = f"greedy_clique_size_optimization_results_seed_{seed_bin}_{label}.csv"
+    results_df.to_csv(fname, index=False)
 
     print("Completed optimize_clique_size")
     return sizes, ttn_scores, p_values, fold_changes, bg_dists
-
 
 
 def grid_search_diffusion_params(

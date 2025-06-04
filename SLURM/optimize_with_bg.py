@@ -35,6 +35,7 @@ tf_bins = []
 with open('mappings/tf_bins.txt', 'r') as file:
     for line in file:
         tf_bins.append(line.strip())
+tf_bins = [int(x) for x in tf_bins]
 
 TTN_BIN = 4275
 

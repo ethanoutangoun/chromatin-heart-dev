@@ -29,12 +29,14 @@ def clique_to_graph(contact_matrix, clique, selected_bin=None):
             font_size=10, font_weight='bold', edge_color='dimgray', linewidths=1.5, font_color="#232323")
 
     labels = nx.get_edge_attributes(G, 'weight')
-    labels = {k: f"{v:.5f}" for k, v in labels.items() if v > 0.00000001}  # Filter out very small weights
+    labels = {k: f"{v:.5f}" for k, v in labels.items()}  # Filter out very small weights
     nx.draw_networkx_edge_labels(G, pos, edge_labels=labels, font_size=10)
 
     plt.tight_layout()
     plt.show()
     return G
+
+
 
 
 def plot_clique_size_optimization(sizes, p_values):
@@ -406,5 +408,17 @@ def plot_contact_matrix(
     cbar.set_label("Interaction frequency", fontsize=10, labelpad=6)
     cbar.ax.tick_params(labelsize=10)
 
+    plt.tight_layout()
+    plt.show()
+
+
+def show_matrix_only(matrix: np.ndarray, vmax: float = 99):
+    vmax_val = np.nanpercentile(matrix, vmax)
+    cmap = plt.cm.Reds
+    cmap.set_bad(color='white')
+
+    plt.figure(figsize=(6, 6))
+    plt.imshow(matrix, cmap=cmap, interpolation='nearest', vmin=0, vmax=vmax_val)
+    plt.axis('off')  # removes axes
     plt.tight_layout()
     plt.show()

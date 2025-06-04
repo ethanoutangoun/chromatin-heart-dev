@@ -248,6 +248,124 @@ def plot_pval_heatmap_from_log(csv_path: str, alpha_precision: int = 3, alpha_ra
     plt.tight_layout()
     plt.show()
     
+
+
+def plot_pval_heatmaps_by_bg(
+    csv_path: str,
+    alpha_precision: int = 3,
+    alpha_range=None,
+    k_range=None,
+    bg_to_plot=None
+):
+    """
+    Reads a CSV with columns ["alpha", "k", "bg_label", "pval", "fold_change"],
+    optionally filters by alpha_range and k_range, and then produces one heatmap
+    per distinct bg_label—showing the minimum p-value over the (alpha, k) grid
+    for that background model. If bg_to_plot is provided, only that background
+    will be displayed; otherwise, all backgrounds are shown.
+
+    Parameters
+    ----------
+    csv_path : str
+        Path to the CSV log file.
+    alpha_precision : int
+        Number of decimal places to round alpha before pivoting (determines row bins).
+    alpha_range : tuple or None
+        If provided, a (min_alpha, max_alpha) tuple to filter rows by alpha.
+    k_range : tuple or None
+        If provided, a (min_k, max_k) tuple to filter rows by k.
+    bg_to_plot : str or None
+        If provided, only this bg_label will be plotted. Must exactly match one of
+        the bg_label values in the CSV. If None, all bg_labels are plotted.
+    """
+
+    # Load the full log
+    df = pd.read_csv(csv_path)
+
+    # Optional filtering by alpha and k
+    if alpha_range is not None:
+        df = df[(df["alpha"] >= alpha_range[0]) & (df["alpha"] <= alpha_range[1])]
+    if k_range is not None:
+        df = df[(df["k"] >= k_range[0]) & (df["k"] <= k_range[1])]
+
+    # Round alpha for grouping
+    df["alpha_rounded"] = df["alpha"].round(alpha_precision)
+
+    # Identify unique background labels
+    all_bg_labels = sorted(df["bg_label"].unique())
+    if not all_bg_labels:
+        raise ValueError("No background labels found in the CSV.")
+
+    # Determine which bg_labels to plot
+    if bg_to_plot is None:
+        bg_labels = all_bg_labels
+    else:
+        if bg_to_plot not in all_bg_labels:
+            raise ValueError(f"bg_to_plot='{bg_to_plot}' not found in CSV. "
+                             f"Available labels: {all_bg_labels}")
+        bg_labels = [bg_to_plot]
+
+    # Build a pivot table for each selected bg_label
+    pivot_tables = {}
+    for label in bg_labels:
+        subset = df[df["bg_label"] == label]
+        pivot = subset.pivot_table(
+            index="alpha_rounded",
+            columns="k",
+            values="pval",
+            aggfunc="min"
+        )
+        pivot.sort_index(ascending=True, inplace=True)
+        pivot_tables[label] = pivot
+
+    # Determine the global min/max p-value across all pivot tables for a shared color scale
+    all_min = min(pivot.min().min() for pivot in pivot_tables.values())
+    all_max = max(pivot.max().max() for pivot in pivot_tables.values())
+
+    # Create a subplot grid: one row, len(bg_labels) columns
+    n_labels = len(bg_labels)
+    fig, axes = plt.subplots(
+        nrows=1,
+        ncols=n_labels,
+        figsize=(6 * n_labels, 6),
+        sharey=True
+    )
+
+    # If there's only one label, axes is a single Axes; wrap it in a list
+    if n_labels == 1:
+        axes = [axes]
+
+    for ax, label in zip(axes, bg_labels):
+        pivot = pivot_tables[label]
+        sns.heatmap(
+            pivot,
+            ax=ax,
+            cmap="viridis_r",
+            norm=mcolors.LogNorm(vmin=all_min, vmax=all_max),
+            annot=True,
+            fmt=".1e",
+            linewidths=0.4,
+            cbar=(ax is axes[-1]),  # show colorbar on the last subplot only
+            cbar_kws={"label": "p-value"},
+            annot_kws={"fontsize": 6}
+        )
+        ax.set_title(f"Background = {label}", fontsize=14)
+        ax.set_xlabel("Clique size (k)", fontsize=12)
+        if ax is axes[0]:
+            ax.set_ylabel("Restart probability (α)", fontsize=12)
+        else:
+            ax.set_ylabel("")
+
+    plt.tight_layout()
+    plt.show()
+
+
+
+
+
+
+
+
 def plot_fold_change_heatmap_from_log(csv_path: str, alpha_precision: int = 3):
     df = pd.read_csv(csv_path)
     df["alpha_rounded"] = df["alpha"].round(alpha_precision)

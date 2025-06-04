@@ -211,6 +211,135 @@ def optimize_diffusion_params_stochastic(
     
 
 
+# def optimize_diffusion_params_smart(
+#     contact_matrix: np.ndarray,
+#     seed_bin: int,
+#     k_range=(5, 50),
+#     alpha_bounds=(0.01, 0.95),
+#     n_trials: int = 50,
+#     timeout_minutes: int = 120,
+#     log_csv: str = "full_alpha_k_log.csv",
+#     background_bins=None,
+# ):
+#     """
+#     If background_bins is provided, only those bins (excluding seed_bin) will be
+#     used to compute the empirical p-value. Otherwise all other bins are used.
+
+#     This version appends the results of each trial to `log_csv` immediately after
+#     that trial finishes, so that a crash midway won't lose already‐completed trials.
+#     """
+#     N = contact_matrix.shape[0]
+
+#     # Build row-stochastic transition matrix P and identity I
+#     P = np.zeros((N, N), dtype=float)
+#     row_sums = contact_matrix.sum(axis=1)
+#     for i in range(N):
+#         if row_sums[i] > 0:
+#             P[i, :] = contact_matrix[i, :] / row_sums[i]
+#         else:
+#             P[i, i] = 1.0
+#     I = np.eye(N)
+
+#     # Determine background list
+#     if background_bins is None:
+#         bg_list = [i for i in range(N) if i != seed_bin]
+#     else:
+#         bg_list = [i for i in background_bins if i != seed_bin]
+
+#     all_trials_log = []
+#     study = optuna.create_study(direction="minimize")
+
+#     # Ensure alpha bounds are evaluated first
+#     alpha_lower, alpha_upper = alpha_bounds
+#     study.enqueue_trial({"alpha": alpha_lower})
+#     study.enqueue_trial({"alpha": alpha_upper})
+
+#     # If the CSV does not exist, write the header row first
+#     if not os.path.isfile(log_csv):
+#         header_df = pd.DataFrame(columns=["alpha", "k", "pval", "fold_change"])
+#         header_df.to_csv(log_csv, index=False)
+
+#     def objective(trial):
+#         alpha = trial.suggest_float("alpha", *alpha_bounds)
+
+#         # Invert diffusion matrix for this alpha
+#         A = I - (1 - alpha) * P
+#         F = np.linalg.inv(A)
+#         sorted_ranks = [np.argsort(F[i])[::-1] for i in range(N)]
+
+#         best_p = np.inf
+#         # Collect rows just for this trial:
+#         trial_log = []
+
+#         for k in tqdm(range(k_range[0], k_range[1] + 1), desc=f"α = {alpha:.3f}"):
+#             clique = sorted_ranks[seed_bin][:k]
+#             ttn_score = core.stats.calculate_avg_interaction_strength(contact_matrix, clique)
+
+#             # Compute background scores
+#             bg_scores = [
+#                 core.stats.calculate_avg_interaction_strength(contact_matrix, sorted_ranks[i][:k])
+#                 for i in bg_list
+#             ]
+#             bg_scores = np.array(bg_scores)
+
+#             pval = core.stats.empirical_p_value(ttn_score, bg_scores)
+#             fold = ttn_score / (np.median(bg_scores) + 1e-10)
+
+#             row = {
+#                 "alpha": alpha,
+#                 "k": k,
+#                 "pval": pval,
+#                 "fold_change": fold
+#             }
+#             trial_log.append(row)
+#             all_trials_log.append(row)
+
+#             best_p = min(best_p, pval)
+
+#         # After finishing all k values for this trial, append to CSV:
+#         df_trial = pd.DataFrame(trial_log)
+#         df_trial.to_csv(log_csv, mode="a", header=False, index=False)
+
+#         return best_p
+
+#     # Run optimization (Optuna will call objective() repeatedly)
+#     study.optimize(objective, n_trials=n_trials, timeout=timeout_minutes * 60)
+
+#     # Once optimization is done, extract the best parameters & recompute final clique
+#     best_alpha = study.best_params["alpha"]
+#     A = I - (1 - best_alpha) * P
+#     F = np.linalg.inv(A)
+#     sorted_ranks = [np.argsort(F[i])[::-1] for i in range(N)]
+
+#     # Find the best (alpha, k) record among all_trials_log for final clique
+#     best_entry = min(
+#         (r for r in all_trials_log if np.isclose(r["alpha"], best_alpha, atol=1e-6)),
+#         key=lambda r: r["pval"]
+#     )
+
+#     best_k = best_entry["k"]
+#     best_clique = sorted_ranks[seed_bin][:best_k]
+#     final_pval = best_entry["pval"]
+#     final_fold = best_entry["fold_change"]
+
+#     # As a final sanity check, overwrite the CSV with the full history 
+#     # (optional—your individual trial‐by‐trial appends have already been saved)
+#     pd.DataFrame(all_trials_log).to_csv(log_csv, index=False)
+
+#     return {
+#         "best_alpha": best_alpha,
+#         "best_k": best_k,
+#         "best_clique": best_clique,
+#         "final_pval": final_pval,
+#         "final_fold": final_fold,
+#         "full_log": all_trials_log
+#     }
+import os
+import numpy as np
+import pandas as pd
+import optuna
+from tqdm import tqdm
+
 def optimize_diffusion_params_smart(
     contact_matrix: np.ndarray,
     seed_bin: int,
@@ -219,15 +348,24 @@ def optimize_diffusion_params_smart(
     n_trials: int = 50,
     timeout_minutes: int = 120,
     log_csv: str = "full_alpha_k_log.csv",
-    background_bins=None,
+    background_bins: dict = None,
 ):
     """
-    If background_bins is provided, only those bins (excluding seed_bin) will be
-    used to compute the empirical p-value. Otherwise all other bins are used.
+    `background_bins` should be a dict mapping each background-label (str) to a list of bin indices.
+    Each list must exclude seed_bin internally. Example:
+        background_bins = {
+            "genic": [0, 1, 5, ...],
+            "intergenic": [2, 3, 4, ...],
+            "custom": [10, 20, 30, ...]
+        }
 
-    This version appends the results of each trial to `log_csv` immediately after
-    that trial finishes, so that a crash midway won't lose already‐completed trials.
+    For each trial (choice of alpha) and for each k in k_range, this computes:
+      - ttn_score for the seed_bin clique
+      - an empirical p-value and fold-change for every background set
+    Rows appended to `log_csv` have columns:
+      ["alpha", "k", "bg_label", "pval", "fold_change"]
     """
+
     N = contact_matrix.shape[0]
 
     # Build row-stochastic transition matrix P and identity I
@@ -240,11 +378,17 @@ def optimize_diffusion_params_smart(
             P[i, i] = 1.0
     I = np.eye(N)
 
-    # Determine background list
+    # Prepare background_models: { label: [bin indices excluding seed_bin] }
     if background_bins is None:
-        bg_list = [i for i in range(N) if i != seed_bin]
+        # Single background labeled "all" with every bin except seed_bin
+        background_models = {"all": [i for i in range(N) if i != seed_bin]}
     else:
-        bg_list = [i for i in background_bins if i != seed_bin]
+        background_models = {}
+        for label, bins in background_bins.items():
+            filtered = [i for i in bins if i != seed_bin]
+            if len(filtered) == 0:
+                raise ValueError(f"Background '{label}' is empty after removing seed_bin.")
+            background_models[label] = filtered
 
     all_trials_log = []
     study = optuna.create_study(direction="minimize")
@@ -256,7 +400,7 @@ def optimize_diffusion_params_smart(
 
     # If the CSV does not exist, write the header row first
     if not os.path.isfile(log_csv):
-        header_df = pd.DataFrame(columns=["alpha", "k", "pval", "fold_change"])
+        header_df = pd.DataFrame(columns=["alpha", "k", "bg_label", "pval", "fold_change"])
         header_df.to_csv(log_csv, index=False)
 
     def objective(trial):
@@ -268,73 +412,73 @@ def optimize_diffusion_params_smart(
         sorted_ranks = [np.argsort(F[i])[::-1] for i in range(N)]
 
         best_p = np.inf
-        # Collect rows just for this trial:
         trial_log = []
 
         for k in tqdm(range(k_range[0], k_range[1] + 1), desc=f"α = {alpha:.3f}"):
             clique = sorted_ranks[seed_bin][:k]
             ttn_score = core.stats.calculate_avg_interaction_strength(contact_matrix, clique)
 
-            # Compute background scores
-            bg_scores = [
-                core.stats.calculate_avg_interaction_strength(contact_matrix, sorted_ranks[i][:k])
-                for i in bg_list
-            ]
-            bg_scores = np.array(bg_scores)
+            # Compute stats for each background model
+            for label, bg_list in background_models.items():
+                bg_scores = np.array([
+                    core.stats.calculate_avg_interaction_strength(contact_matrix, sorted_ranks[i][:k])
+                    for i in bg_list
+                ])
 
-            pval = core.stats.empirical_p_value(ttn_score, bg_scores)
-            fold = ttn_score / (np.median(bg_scores) + 1e-10)
+                pval = core.stats.empirical_p_value(ttn_score, bg_scores)
+                fold = ttn_score / (np.median(bg_scores) + 1e-10)
 
-            row = {
-                "alpha": alpha,
-                "k": k,
-                "pval": pval,
-                "fold_change": fold
-            }
-            trial_log.append(row)
-            all_trials_log.append(row)
+                row = {
+                    "alpha": alpha,
+                    "k": k,
+                    "bg_label": label,
+                    "pval": pval,
+                    "fold_change": fold
+                }
+                trial_log.append(row)
+                all_trials_log.append(row)
 
-            best_p = min(best_p, pval)
+                if pval < best_p:
+                    best_p = pval
 
-        # After finishing all k values for this trial, append to CSV:
+        # Append this trial's rows to CSV immediately
         df_trial = pd.DataFrame(trial_log)
         df_trial.to_csv(log_csv, mode="a", header=False, index=False)
 
         return best_p
 
-    # Run optimization (Optuna will call objective() repeatedly)
+    # Run the Optuna optimization
     study.optimize(objective, n_trials=n_trials, timeout=timeout_minutes * 60)
 
-    # Once optimization is done, extract the best parameters & recompute final clique
+    # Once optimization is done, recompute for the best alpha
     best_alpha = study.best_params["alpha"]
     A = I - (1 - best_alpha) * P
     F = np.linalg.inv(A)
     sorted_ranks = [np.argsort(F[i])[::-1] for i in range(N)]
 
-    # Find the best (alpha, k) record among all_trials_log for final clique
+    # Find the best entry among all_trials_log (alpha == best_alpha) by minimum pval
     best_entry = min(
-        (r for r in all_trials_log if np.isclose(r["alpha"], best_alpha, atol=1e-6)),
+        (r for r in all_trials_log if np.isclose(r["alpha"], best_alpha, atol=1e-8)),
         key=lambda r: r["pval"]
     )
-
     best_k = best_entry["k"]
+    best_bg_label = best_entry["bg_label"]
     best_clique = sorted_ranks[seed_bin][:best_k]
     final_pval = best_entry["pval"]
     final_fold = best_entry["fold_change"]
 
-    # As a final sanity check, overwrite the CSV with the full history 
-    # (optional—your individual trial‐by‐trial appends have already been saved)
+    # (Optional) Overwrite CSV with full history for consistency
     pd.DataFrame(all_trials_log).to_csv(log_csv, index=False)
 
     return {
         "best_alpha": best_alpha,
         "best_k": best_k,
+        "best_bg_label": best_bg_label,
         "best_clique": best_clique,
         "final_pval": final_pval,
         "final_fold": final_fold,
         "full_log": all_trials_log
     }
-
 
 
 # Given a fixed alpha, # optimize the clique size k for a given seed bin

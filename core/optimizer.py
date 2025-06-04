@@ -549,7 +549,7 @@ def optimize_clique_size(
     seed_bin,
     num_samples=1000,
     clique_alg=cf.find_greedy_clique,
-    background_bins = None,
+    background_bins=None,
     label=None,
     **alg_kwargs
 ):
@@ -579,18 +579,18 @@ def optimize_clique_size(
     )
     print(f"Computed TTN full clique of size {len(ttn_full)} using {clique_alg.__name__}")
 
-    bg_set = []
     if background_bins is None:
         bg_set = [i for i in range(contact_matrix.shape[0]) if i != seed_bin]
     else:
         # ensure seed_bin isn't accidentally included
         bg_set = [i for i in background_bins if i != seed_bin]
 
+    # 2) Background samples (full size) without replacement
+    actual_samples = min(num_samples, len(bg_set))
+    shuffled_bg = np.random.permutation(bg_set)[:actual_samples]
 
-    # 2) Background samples (full size)
     bg_full = []
-    for _ in tqdm(range(num_samples), desc="Sampling background cliques"):
-        rand_bin = np.random.choice(bg_set)
+    for rand_bin in tqdm(shuffled_bg, desc="Sampling background cliques"):
         bg = clique_alg(
             contact_matrix,
             max_clique_size,
@@ -613,7 +613,6 @@ def optimize_clique_size(
             contact_matrix,
             ttn_sub
         )
- 
 
         # Background scores
         bg_scores = []
@@ -631,7 +630,6 @@ def optimize_clique_size(
         pval = (np.sum(np.array(bg_scores) >= ttn_score) + 1) / (num_samples + 1)
         fold = ttn_score / median_bg if median_bg != 0 else float('nan')
 
-
         ttn_scores.append(ttn_score)
         p_values.append(pval)
         fold_changes.append(fold)
@@ -644,17 +642,13 @@ def optimize_clique_size(
         "fold_change": fold_changes
     })
 
-
     if label is None:
         results_df.to_csv(f"greedy_clique_size_optimization_results_seed_{seed_bin}.csv", index=False)
     else:
         results_df.to_csv(f"greedy_clique_size_optimization_results_seed_{seed_bin}_{label}.csv", index=False)
 
-
-
     print("Completed optimize_clique_size")
     return sizes, ttn_scores, p_values, fold_changes, bg_dists
-
 
 
 

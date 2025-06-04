@@ -99,7 +99,7 @@ def optimize_diffusion_params_stochastic(
     background_size = 1000,
     num_walkers=1000,
     timeout_minutes: int = 120,
-    log_csv: str = "diffusion_alpha_k_log.csv",
+    log_csv: str = "diffusions_stochastic_alpha_k_log.csv",
     background_bins=None,
 ):
     N = contact_matrix.shape[0]

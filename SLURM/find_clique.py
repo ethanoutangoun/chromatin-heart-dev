@@ -33,7 +33,7 @@ non_gene_bins = [int(x) for x in non_gene_bins]
 TTN_BIN = 4275
 # TTN_BIN = 100
 
-contact_matrix_zero = np.load('data/hic/wildtype_100kb_zeroed.npy')
+contact_matrix_zero = np.load('data/hic/wildtype_100kb_zeroed_no_chrY.npy')
 # contact_matrix_zero = np.load('data/hic/wt_100kb_balanced_zeroed_no_chrY.npy')
 # contact_matrix_zero = f.generate_sample_matrix_bins(100)
 print('Contact matrix loaded, computing clique...')
@@ -42,7 +42,7 @@ print('Contact matrix loaded, computing clique...')
 clique, visits = cf.analytical_diffusion_clique(contact_matrix_zero, TTN_BIN, 100, 0.5)
 
 # write the results to a file
-with open('ttn_clique_results_diffusion.txt', 'w') as file:
+with open('wt_ttn_diffusion_noY_alpha_50_top_100_bins.txt', 'w') as file:
     for bin in clique:
         file.write(f"{bin}\n")
 

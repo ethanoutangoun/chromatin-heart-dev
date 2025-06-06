@@ -22,8 +22,8 @@ def clique_to_graph(contact_matrix, clique, selected_bin=None):
     highlight_color = "#bd5931" 
     node_colors = [highlight_color if bin == selected_bin else base_color for bin in clique]
 
-    # pos = nx.spring_layout(G, seed=42)
-    pos = nx.circular_layout(G)
+    pos = nx.spring_layout(G, seed=42)
+    # pos = nx.circular_layout(G)
     plt.figure(figsize=(8, 6))
     nx.draw(G, pos, with_labels=True, node_size=800, node_color=node_colors,
             font_size=10, font_weight='bold', edge_color='dimgray', linewidths=1.5, font_color="#232323")
@@ -211,7 +211,51 @@ def plot_pval_contours_from_csv(csv_path: str, alpha_precision: int = 3, render_
     plt.show()
 
 
-def plot_pval_heatmap_from_log(csv_path: str, alpha_precision: int = 3, alpha_range=None, k_range=None):
+# def plot_pval_heatmap_from_log(csv_path: str, alpha_precision: int = 3, alpha_range=None, k_range=None):
+#     df = pd.read_csv(csv_path)
+
+#     # Optional filtering
+#     if alpha_range is not None:
+#         df = df[(df["alpha"] >= alpha_range[0]) & (df["alpha"] <= alpha_range[1])]
+#     if k_range is not None:
+#         df = df[(df["k"] >= k_range[0]) & (df["k"] <= k_range[1])]
+
+#     df["alpha_rounded"] = df["alpha"].round(alpha_precision)
+
+#     heatmap_data = df.pivot_table(
+#         index="alpha_rounded",
+#         columns="k",
+#         values="pval",
+#         aggfunc="min"
+#     )
+#     heatmap_data.sort_index(ascending=True, inplace=True)
+
+#     plt.figure(figsize=(16, 6))
+#     ax = sns.heatmap(
+#         heatmap_data,
+#         cmap="viridis_r",
+#         norm=mcolors.LogNorm(vmin=heatmap_data.min().min(), vmax=heatmap_data.max().max()),
+#         annot=True,
+#         fmt=".1e",
+#         linewidths=0.4,
+#         cbar_kws={"label": "p-value"},
+#         annot_kws={"fontsize": 6}
+#     )
+#     plt.title("P-value Heatmap over (α, k) Grid", fontsize=14)
+#     plt.xlabel("Clique size (k)", fontsize=12)
+#     plt.ylabel("Restart probability (α)", fontsize=12)
+
+#     plt.tight_layout()
+#     plt.show()
+    
+
+def plot_pval_heatmap_from_log(
+    csv_path: str,
+    alpha_precision: int = 3,
+    alpha_range=None,
+    k_range=None,
+    show_labels: bool = True
+):
     df = pd.read_csv(csv_path)
 
     # Optional filtering
@@ -235,11 +279,11 @@ def plot_pval_heatmap_from_log(csv_path: str, alpha_precision: int = 3, alpha_ra
         heatmap_data,
         cmap="viridis_r",
         norm=mcolors.LogNorm(vmin=heatmap_data.min().min(), vmax=heatmap_data.max().max()),
-        annot=True,
-        fmt=".1e",
+        annot=show_labels,
+        fmt=".1e" if show_labels else '',
         linewidths=0.4,
         cbar_kws={"label": "p-value"},
-        annot_kws={"fontsize": 6}
+        annot_kws={"fontsize": 6} if show_labels else {}
     )
     plt.title("P-value Heatmap over (α, k) Grid", fontsize=14)
     plt.xlabel("Clique size (k)", fontsize=12)
@@ -247,7 +291,6 @@ def plot_pval_heatmap_from_log(csv_path: str, alpha_precision: int = 3, alpha_ra
 
     plt.tight_layout()
     plt.show()
-    
 
 
 def plot_pval_heatmaps_by_bg(
@@ -530,13 +573,77 @@ def plot_contact_matrix(
     plt.show()
 
 
-def show_matrix_only(matrix: np.ndarray, vmax: float = 99):
+# def show_matrix_only(matrix: np.ndarray, vmax: float = 99):
+#     vmax_val = np.nanpercentile(matrix, vmax)
+#     cmap = plt.cm.Reds
+#     cmap.set_bad(color='white')
+
+#     plt.figure(figsize=(6, 6))
+#     plt.imshow(matrix, cmap=cmap, interpolation='nearest', vmin=0, vmax=vmax_val)
+#     plt.axis('off')  # removes axes
+#     plt.tight_layout()
+#     plt.show()
+
+def show_matrix_only(matrix: np.ndarray, vmax: float = 99, split_at: int = None):
+    import matplotlib.pyplot as plt
+    import numpy as np
+
     vmax_val = np.nanpercentile(matrix, vmax)
     cmap = plt.cm.Reds
     cmap.set_bad(color='white')
 
-    plt.figure(figsize=(6, 6))
-    plt.imshow(matrix, cmap=cmap, interpolation='nearest', vmin=0, vmax=vmax_val)
-    plt.axis('off')  # removes axes
+    fig, ax = plt.subplots(figsize=(6, 6))
+    im = ax.imshow(matrix, cmap=cmap, interpolation='nearest', vmin=0, vmax=vmax_val)
+
+    if split_at is not None:
+        # Vertical and horizontal dashed lines
+        ax.axvline(x=split_at, color='black', linestyle='--', linewidth=1)
+        # ax.axhline(y=split_at, color='black', linestyle='--', linewidth=1)
+
+        # Set x-axis ticks and labels
+        ax.set_xticks([split_at // 2, (split_at + matrix.shape[1]) // 2])
+        ax.set_xticklabels(['chr2', 'chr3'])
+        ax.xaxis.tick_top()
+
+        # Set y-axis ticks and labels (centered)
+        ax.set_yticks([matrix.shape[0] // 2])
+        ax.set_yticklabels(['chr2'])
+
+    else:
+        ax.set_xticks([])
+        ax.set_yticks([])
+
     plt.tight_layout()
     plt.show()
+
+# def show_matrix_only(matrix: np.ndarray, vmax: float = 99, split_at: int = None):
+#     import matplotlib.pyplot as plt
+#     import numpy as np
+
+#     vmax_val = np.nanpercentile(matrix, vmax)
+#     cmap = plt.cm.Reds
+#     cmap.set_bad(color='white')
+
+#     fig, ax = plt.subplots(figsize=(7, 6))
+#     im = ax.imshow(matrix, cmap=cmap, interpolation='nearest', vmin=0, vmax=vmax_val)
+
+#     if split_at is not None:
+#         ax.axvline(x=split_at, color='black', linestyle='--', linewidth=1)
+
+#         ax.set_xticks([split_at // 2, (split_at + matrix.shape[1]) // 2])
+#         ax.set_xticklabels(['chr2', 'chr3'])
+#         ax.xaxis.tick_top()
+
+#         ax.set_yticks([matrix.shape[0] // 2])
+#         ax.set_yticklabels(['chr2'])
+#     else:
+#         ax.set_xticks([])
+#         ax.set_yticks([])
+
+#     # Compact colorbar: skinny and close
+#     cbar = plt.colorbar(im, ax=ax, fraction=0.025, pad=0.01)
+#     cbar.set_label('Interaction Strength', rotation=270, labelpad=10)
+#     cbar.ax.tick_params(labelsize=8)
+
+#     plt.tight_layout()
+#     plt.show()

@@ -35,44 +35,31 @@ tf_bins = []
 with open('mappings/tf_bins.txt', 'r') as file:
     for line in file:
         tf_bins.append(line.strip())
+tf_bins = [int(x) for x in tf_bins]
 
 TTN_BIN = 4275
 
 
-contact_matrix_zero = np.load('data/hic/wildtype_100kb_zeroed.npy') #SLURM
+# contact_matrix_zero = np.load('data/hic/wildtype_100kb_zeroed.npy') #SLURM
 # contact_matrix_zero = np.load('data/hic/wt_100kb_balanced_zeroed.npy')
-# contact_matrix_zero = np.load('data/hic/wt_100kb_balanced_zeroed_no_chrY.npy')
+contact_matrix_zero = np.load('data/hic/wt_100kb_balanced_zeroed_no_chrY.npy')
 # contact_matrix_zero = f.generate_sample_matrix_bins(1000)
 
 # contact_matrix_zero = np.load('data/hic/wt_1mb_zeroed.npy')
 
-# def build_walk_index(contact_matrix):
-#     """
-#     Precompute for each node:
-#       - neighbors[i]: 1D int array of neighbors
-#       - cdfs[i]:      1D float array of cumulative probabilities
-#     """
-#     N = contact_matrix.shape[0]
-#     neighbors = [None]*N
-#     cdfs      = [None]*N
-
-#     for i in tqdm(range(N)):
-#         w = contact_matrix[i]
-#         idx = np.nonzero(w)[0]
-#         if idx.size == 0:
-#             neighbors[i] = np.empty(0, dtype=int)
-#             cdfs[i]      = np.empty(0, dtype=float)
-#         else:
-#             probs = w[idx] / w[idx].sum()
-#             neighbors[i] = idx
-#             cdfs[i]      = np.cumsum(probs)
-#     return neighbors, cdfs
-
-# neighbors, cdfs = build_walk_index(contact_matrix_zero)
 
 
 all_bins = [i for i in range(contact_matrix_zero.shape[0])]
 
+NUM_SAMPLES = 10
+MAX_SIZE = 5
 
-res = core.optimizer.optimize_diffusion_params_smart(contact_matrix_zero, TTN_BIN, (3,50), (0.05, 0.80), n_trials=10, timeout_minutes=300, log_csv='test_optimize.csv', background_bins={'gene': gene_bins, 'non_gene': non_gene_bins, 'all': all_bins})
+
+
+core.optimizer.optimize_clique_size(contact_matrix_zero, MAX_SIZE, TTN_BIN, NUM_SAMPLES, background_bins=all_bins, label='no_y_greedy_optimize_all')
+core.optimizer.optimize_clique_size(contact_matrix_zero, MAX_SIZE, TTN_BIN, NUM_SAMPLES, background_bins=tf_bins, label='no_y_greedy_optimize_tf')
+core.optimizer.optimize_clique_size(contact_matrix_zero, MAX_SIZE, TTN_BIN, NUM_SAMPLES, background_bins=non_gene_bins, label='no_y_greedy_optimize_weak')
+core.optimizer.optimize_clique_size(contact_matrix_zero, MAX_SIZE, TTN_BIN, NUM_SAMPLES, background_bins=gene_bins, label='no_y_greedy_optimize_strong')
+
+# res = core.optimizer.optimize_diffusion_params_smart(contact_matrix_zero, TTN_BIN, (3,50), (0.05, 0.80), n_trials=10, timeout_minutes=300, log_csv='test_optimize.csv', background_bins={'gene': gene_bins, 'non_gene': non_gene_bins, 'all': all_bins})
 # res = core.optimizer.optimize_diffusion_params_stochastic(contact_matrix_zero, TTN_BIN, (3, 50), (0.05, 0.80), n_trials=10, neighbors=neighbors, cdfs=cdfs, background_size=10000, num_walkers=5000, timeout_minutes=300)

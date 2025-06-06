@@ -42,7 +42,11 @@ TTN_BIN = 4275
 
 # contact_matrix_zero = np.load('data/hic/wildtype_100kb_zeroed.npy') #SLURM
 # contact_matrix_zero = np.load('data/hic/wt_100kb_balanced_zeroed.npy')
-contact_matrix_zero = np.load('data/hic/wt_100kb_balanced_zeroed_no_chrY.npy')
+# contact_matrix_zero = np.load('data/hic/wt_100kb_balanced_zeroed_no_chrY.npy')
+
+
+contact_matrix_zero = np.load('data/hic/wildtype_100kb_zeroed_no_chrY.npy') #SLURM NO Y
+
 # contact_matrix_zero = f.generate_sample_matrix_bins(1000)
 
 # contact_matrix_zero = np.load('data/hic/wt_1mb_zeroed.npy')

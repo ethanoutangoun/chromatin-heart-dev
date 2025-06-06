@@ -48,8 +48,8 @@ with open('mappings/tf_bins.txt', 'r') as file:
 tf_bins = [int(x) for x in tf_bins]
 
 
-# contact_matrix_zero = np.load('data/hic/wildtype_100kb_zeroed.npy')
-contact_matrix_zero = np.load('data/hic/wt_100kb_balanced_zeroed.npy')
+contact_matrix_zero = np.load('data/hic/wildtype_100kb_zeroed.npy')
+# contact_matrix_zero = np.load('data/hic/wt_100kb_balanced_zeroed.npy')
 
 
 

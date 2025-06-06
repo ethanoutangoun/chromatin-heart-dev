@@ -56,7 +56,7 @@ contact_matrix_zero = np.load('data/hic/wildtype_100kb_zeroed.npy')
 
 
 clique_sizes = [5, 10]
-num_samples = 10
+num_samples = 5000
 all_bins = [i for i in range(contact_matrix_zero.shape[0])]
 
 records = []

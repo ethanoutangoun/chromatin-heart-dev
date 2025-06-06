@@ -51,8 +51,8 @@ contact_matrix_zero = np.load('data/hic/wt_100kb_balanced_zeroed_no_chrY.npy')
 
 all_bins = [i for i in range(contact_matrix_zero.shape[0])]
 
-NUM_SAMPLES = 10
-MAX_SIZE = 5
+NUM_SAMPLES = 5000
+MAX_SIZE = 30
 
 
 

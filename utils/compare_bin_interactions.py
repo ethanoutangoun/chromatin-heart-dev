@@ -1,5 +1,34 @@
 
 #!/usr/bin/env python3
+"""
+compare_bin_interactions.py
+
+Compares the genome-wide interaction profile of a specific bin between wildtype and knockout
+Hi-C contact matrices. Generates a side-by-side line plot of interaction strengths.
+
+Useful for assessing the impact of genetic perturbations at a specific genomic region.
+
+Usage:
+    python compare_bin_interactions.py \
+        --wt path/to/wildtype.npy \
+        --ko path/to/knockout.npy \
+        --bin 123 \
+        --output bin123_comparison.png
+
+Inputs:
+    - wt (.npy): wildtype contact matrix
+    - ko (.npy): knockout contact matrix
+    - bin: integer index of the bin to compare
+    - output (optional): filename for the plot (default: compare_bin_interactions.png)
+
+Output:
+    - PNG line plot showing interaction profile of the selected bin in WT and KO
+
+Dependencies:
+    - numpy
+    - matplotlib
+"""
+
 import numpy as np
 import matplotlib.pyplot as plt
 import argparse

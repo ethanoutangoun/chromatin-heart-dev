@@ -1,4 +1,28 @@
 #!/usr/bin/env python3
+"""
+convert_to_npz.py
+
+Converts a `.npy` Hi-C contact matrix to a compressed `.npz` format and filters out
+rows with nearly zero total interaction. Also stores indices of rows that passed the filter.
+
+Useful for tools that require compressed input or masked matrices.
+
+Usage:
+    python convert_to_npz.py path/to/matrix.npy --tol 1e-6
+
+Inputs:
+    - input (.npy): 2D Hi-C contact matrix
+    - tol (optional): minimum row sum to consider a bin "active" (default: 1e-6)
+
+Outputs:
+    - .npz file with:
+        • mat — the original matrix
+        • var — indices of rows with sum > tol
+
+Dependencies:
+    - numpy
+"""
+
 import argparse
 import numpy as np
 from pathlib import Path

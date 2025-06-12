@@ -7,35 +7,55 @@ import networkx as nx
 
 
 
-def clique_to_graph(contact_matrix, clique, selected_bin=None):
-    
+import matplotlib.pyplot as plt
+import networkx as nx
+
+def clique_to_graph(contact_matrix, clique, selected_bin=None, circle=False):
     edges = []
     for i in range(len(clique)):
-        for j in range(i+1, len(clique)):
+        for j in range(i + 1, len(clique)):
             edges.append((clique[i], clique[j], contact_matrix[clique[i], clique[j]]))
 
     G = nx.Graph()
     G.add_nodes_from(clique)
     G.add_weighted_edges_from(edges)
 
-    base_color = '#7fbfdf'    
-    highlight_color = "#bd5931" 
+    base_color = '#7fbfdf'
+    highlight_color = "#bd5931"
     node_colors = [highlight_color if bin == selected_bin else base_color for bin in clique]
 
-    pos = nx.spring_layout(G, seed=42)
-    # pos = nx.circular_layout(G)
-    plt.figure(figsize=(8, 6))
-    nx.draw(G, pos, with_labels=True, node_size=800, node_color=node_colors,
-            font_size=10, font_weight='bold', edge_color='dimgray', linewidths=1.5, font_color="#232323")
+    # Choose layout
+    if circle:
+        pos = nx.circular_layout(G)
+    else:
+        pos = nx.spring_layout(G, seed=42)
 
+    # Draw
+    plt.figure(figsize=(8, 6))
+    nx.draw(
+        G,
+        pos,
+        with_labels=True,
+        node_size=800,
+        node_color=node_colors,
+        font_size=10,
+        font_weight='bold',
+        edge_color='dimgray',
+        linewidths=1.5,
+        font_color="#232323"
+    )
+
+    # Edge labels
     labels = nx.get_edge_attributes(G, 'weight')
-    labels = {k: f"{v:.5f}" for k, v in labels.items()}  # Filter out very small weights
+    labels = {k: f"{v:.5f}" for k, v in labels.items() }
     nx.draw_networkx_edge_labels(G, pos, edge_labels=labels, font_size=10)
+
+    if circle:
+        plt.axis("equal")  # Enforce circular shape
 
     plt.tight_layout()
     plt.show()
     return G
-
 
 
 

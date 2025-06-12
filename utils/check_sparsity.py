@@ -1,4 +1,23 @@
 #!/usr/bin/env python3
+"""
+check_sparsity.py
+
+Calculates and prints the proportion of non-zero entries in a Hi-C contact matrix,
+providing a quick estimate of matrix sparsity.
+
+Usage:
+    python check_sparsity.py -m path/to/matrix.npy --label MyMatrix
+
+Inputs:
+    - matrix (.npy): path to a Hi-C contact matrix
+    - label (optional): label to prefix the output (default: "Matrix")
+
+Output:
+    - Printed percentage of non-zero values (e.g., "MyMatrix density: 2.34%")
+
+Dependencies:
+    - numpy
+"""
 
 import numpy as np
 import argparse

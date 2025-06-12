@@ -1,4 +1,21 @@
 #!/usr/bin/env python3
+"""
+unzip_dir.py
+
+Unzips all `.gz` files in a specified directory and deletes the original compressed files.
+Useful for batch processing zipped datasets such as those from ENCODE or other repositories.
+
+Usage:
+    python unzip_dir.py path/to/directory
+
+Inputs:
+    - directory: path to a folder containing `.gz` files
+
+Output:
+    - Each `.gz` file is extracted in-place and the original `.gz` file is deleted
+
+"""
+
 import os
 import gzip
 import shutil

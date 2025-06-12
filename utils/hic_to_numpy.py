@@ -1,6 +1,38 @@
-# WORK IN PROGRESS, UNTESTED SCRIPT
-
 #!/usr/bin/env python3
+"""
+hic_to_npy.py
+
+WORK IN PROGRESS — UNTESTED SCRIPT
+
+Convenience wrapper to convert a `.hic` file into a `.mcool` using `hic2cool`,
+then extract a balanced contact matrix at a given resolution and save it as a `.npy` file.
+
+Recommended: use `hic2cool` directly.
+This script automates conversion and extraction for reference.
+
+Usage:
+    python hic_to_npy.py path/to/input.hic \
+        -r 100000 \
+        --mcool path/to/output.mcool \
+        --output-npy path/to/output.npy
+
+Inputs:
+    - hic_file (.hic): input Hi-C data in .hic format
+    - resolution (optional): resolution in bp (default: 100000)
+    - mcool (optional): output .mcool path (default: basename of hic_file + .mcool)
+    - output_npy (optional): output .npy path for balanced matrix
+
+Output:
+    - .mcool file at specified resolution
+    - Balanced contact matrix in .npy format
+
+Dependencies:
+    - hic2cool
+    - cooler
+    - numpy
+
+"""
+
 import os
 import argparse
 import subprocess

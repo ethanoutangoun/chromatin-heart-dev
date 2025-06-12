@@ -1,4 +1,28 @@
 #!/usr/bin/env python3
+"""
+cooler_to_numpy.py
+
+Extracts a contact matrix from a `.cool` file and saves it as a `.npy` file.
+Supports both balanced and raw matrices depending on the `--no-balance` flag.
+
+Usage:
+    python cooler_to_numpy.py path/to/matrix.cool \
+        --no-balance \
+        --output path/to/output.npy
+
+Inputs:
+    - cool_file (.cool): input Cooler file
+    - --no-balance (flag): disables matrix balancing (default is balanced)
+    - --output (optional): output path for .npy file (default: data/hic/<basename>_balanced.npy)
+
+Output:
+    - A 2D numpy array saved as a `.npy` file
+
+Dependencies:
+    - cooler
+    - numpy
+"""
+
 import argparse
 import os
 import cooler

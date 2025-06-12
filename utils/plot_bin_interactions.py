@@ -1,4 +1,27 @@
 #!/usr/bin/env python3
+"""
+plot_bin_interactions.py
+
+Generates a 1D interaction profile for a given bin in a Hi-C contact matrix.
+Sums the row and column corresponding to the selected bin to approximate total interaction signal,
+similar to a virtual 4C profile.
+
+Usage:
+    python plot_bin_interactions.py --matrix path/to/matrix.npy \
+        --bin 4275 \
+        --out bin4275_plot.png \
+        --title "My Bin"
+
+Inputs:
+    - matrix (.npy): square Hi-C contact matrix
+    - bin: integer index of the bin to plot
+    - out (optional): output plot filename (default: bin_interactions.png)
+    - title (optional): custom title for the plot
+
+Output:
+    - PNG figure showing the bin's interaction profile across the genome
+
+"""
 
 import numpy as np
 import matplotlib.pyplot as plt

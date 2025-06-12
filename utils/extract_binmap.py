@@ -1,5 +1,23 @@
 #!/usr/bin/env python3
-# Extract bin map from a .cool file to a BED-like mapping file
+"""
+extract_binmap.py
+
+Extracts a bin map from a `.cool` file and saves it as a BED-like tab-delimited file
+with columns: chrom, start, end, bin_id. Useful for mapping matrix indices to genomic coordinates.
+
+Usage:
+    python extract_binmap.py path/to/input.cool --output bin_map.bed
+
+Inputs:
+    - input_cool (.cool): path to a Cooler contact matrix
+    - output (optional): path to output BED-like bin map (default: <basename>_bin_map.bed)
+
+Output:
+    - A .bed file with 4 columns: chrom, start, end, bin_id
+
+Dependencies:
+    - cooler
+"""
 
 import os
 import argparse
